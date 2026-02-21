@@ -4,5 +4,5 @@ services:
     env_file:
       - .env.local
     ports:
-      - "${APP_PORT}:${APP_PORT}"
+      - "${APP_BIND_IP}:${APP_PORT}:${APP_PORT}"
     restart: unless-stopped
