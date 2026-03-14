@@ -1,17 +1,28 @@
 package health
 
 import (
-	"errors"
 	"net/http"
+	sessionHTTP "nosql/internal/api/session"
+	sessionService "nosql/internal/service/session"
 	"nosql/internal/transport"
+	"time"
 )
 
-type HealthHandler struct{}
-
-func (h HealthHandler) Health(w http.ResponseWriter, r *http.Request) {
-	transport.JSON(w, r, http.StatusOK, map[string]string{"status": "ok"})
+type Handler struct {
+	ttl time.Duration
 }
 
-func (h HealthHandler) Unhealth(w http.ResponseWriter, r *http.Request) {
-	transport.ERROR(w, r, http.StatusBadRequest, errors.New("unhealthy"))
+func NewHandler(ttl time.Duration) *Handler {
+	return &Handler{ttl: ttl}
+}
+
+func (h *Handler) Health(w http.ResponseWriter, r *http.Request) {
+	sid := sessionHTTP.ReadSID(r)
+	if sessionService.IsValidSID(sid) {
+		sessionHTTP.WriteSID(w, sid, h.ttl)
+	}
+
+	transport.JSON(w, r, http.StatusOK, map[string]string{
+		"status": "ok",
+	})
 }

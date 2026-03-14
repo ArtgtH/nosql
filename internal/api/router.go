@@ -2,14 +2,18 @@ package api
 
 import (
 	"net/http"
-	"nosql/internal/api/health"
+	healthHTTP "nosql/internal/api/health"
+	sessionHTTP "nosql/internal/api/session"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 )
 
-func NewRouter() http.Handler {
+func NewRouter(
+	healthHandler *healthHTTP.Handler,
+	sessionHandler *sessionHTTP.Handler,
+) http.Handler {
 	r := chi.NewRouter()
 
 	r.Use(middleware.RequestID)
@@ -17,11 +21,8 @@ func NewRouter() http.Handler {
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Timeout(10 * time.Second))
 
-	{
-		h := health.HealthHandler{}
-		r.Get("/health", h.Health)
-		r.Get("/unhealth", h.Unhealth)
-	}
+	r.Get("/health", healthHandler.Health)
+	r.Post("/session", sessionHandler.CreateOrRefresh)
 
 	return r
 }
