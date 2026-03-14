@@ -1,0 +1,14 @@
+services:
+  app:
+    build: .
+    env_file:
+      - .env.local
+    ports:
+      - "${APP_BIND_IP}:${APP_PORT}:${APP_PORT}"
+    restart: unless-stopped
+
+  redis:
+    image: redis:8.0
+    restart: always
+    ports:
+      - "6379:6379"
