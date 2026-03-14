@@ -4,37 +4,66 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net/http"
-	"nosql/internal/api"
+	"log"
+	stdhttp "net/http"
 	"time"
 
+	api "nosql/internal/api"
+	healthHTTP "nosql/internal/api/health"
+	sessionHTTP "nosql/internal/api/session"
 	"nosql/internal/config"
+	redisInfra "nosql/internal/infrastructure/redis"
+	sessionservice "nosql/internal/service/session"
+
+	goredis "github.com/redis/go-redis/v9"
 )
 
 type App struct {
-	server *http.Server
+	server *stdhttp.Server
+	redis  *goredis.Client
 }
 
 func NewApp(cfg config.Config) *App {
+	redisClient := redisInfra.NewClient(cfg)
+
+	sessionRepo := redisInfra.NewSessionRepository(redisClient)
+	sessionService := sessionservice.NewService(sessionRepo, cfg.UserSessionTTL)
+
+	healthHandler := healthHTTP.NewHandler(cfg.UserSessionTTL)
+	sessionHandler := sessionHTTP.NewHandler(sessionService, cfg.UserSessionTTL)
+
+	router := api.NewRouter(healthHandler, sessionHandler)
+
 	return &App{
-		server: &http.Server{
+		redis: redisClient,
+		server: &stdhttp.Server{
 			Addr:              fmt.Sprintf(":%d", cfg.Port),
-			Handler:           api.NewRouter(),
+			Handler:           router,
 			ReadHeaderTimeout: 5 * time.Second,
 		},
 	}
 }
 
 func (a *App) Run() error {
-	fmt.Println("===Server Started===")
-	fmt.Printf("Listening on port %s", a.server.Addr)
+	log.Println("=== Server Started ===")
+	log.Printf("Listening on %s\n", a.server.Addr)
+
 	err := a.server.ListenAndServe()
-	if errors.Is(err, http.ErrServerClosed) {
+	if errors.Is(err, stdhttp.ErrServerClosed) {
 		return nil
 	}
+
 	return err
 }
 
 func (a *App) Shutdown(ctx context.Context) error {
-	return a.server.Shutdown(ctx)
+	serverErr := a.server.Shutdown(ctx)
+
+	if a.redis != nil {
+		if err := a.redis.Close(); err != nil && serverErr == nil {
+			return err
+		}
+	}
+
+	return serverErr
 }
