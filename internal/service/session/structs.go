@@ -6,7 +6,7 @@ import (
 )
 
 const (
-	CookieName = "X-Session-ID"
+	CookieName = "X-Session-Id"
 	KeyPrefix  = "sid:"
 )
 
