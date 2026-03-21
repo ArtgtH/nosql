@@ -25,28 +25,31 @@ type Config struct {
 func Load() (Config, error) {
 	_ = godotenv.Load(".env.local")
 
-	port, err := mustPort("APP_PORT")
+	port, err := getPortEnv("APP_PORT")
 	if err != nil {
 		return Config{}, err
 	}
 
-	ttlSeconds, err := mustPositiveInt("APP_USER_SESSION_TTL")
+	ttlSeconds, err := getPositiveIntEnv("APP_USER_SESSION_TTL")
 	if err != nil {
 		return Config{}, err
 	}
 
-	redisHost := os.Getenv("REDIS_HOST")
+	redisHost, err := getRequiredEnv("REDIS_HOST")
+	if err != nil {
+		return Config{}, err
+	}
 	if redisHost == "" {
 		return Config{}, fmt.Errorf("REDIS_HOST is required")
 	}
 
-	redisPort, err := mustPort("REDIS_PORT")
+	redisPort, err := getPortEnv("REDIS_PORT")
 	if err != nil {
 		return Config{}, err
 	}
 
-	redisDBStr := os.Getenv("REDIS_DB")
-	if redisDBStr == "" {
+	redisDBStr, err := getRequiredEnv("REDIS_DB")
+	if err != nil {
 		return Config{}, fmt.Errorf("REDIS_DB is required")
 	}
 	redisDB, err := strconv.Atoi(redisDBStr)
@@ -66,8 +69,20 @@ func Load() (Config, error) {
 	}, nil
 }
 
-func mustPort(envName string) (int, error) {
-	value := os.Getenv(envName)
+func getRequiredEnv(envName string) (string, error) {
+	value, ok := os.LookupEnv(envName)
+	if !ok || value == "" {
+		return "", fmt.Errorf("%s is required", envName)
+	}
+	return value, nil
+}
+
+func getPortEnv(envName string) (int, error) {
+	value, err := getRequiredEnv(envName)
+	if err != nil {
+		return 0, err
+	}
+
 	port, err := strconv.Atoi(value)
 	if err != nil || port <= 1000 || port > 65535 {
 		return 0, fmt.Errorf("invalid %s=%q", envName, value)
@@ -75,8 +90,12 @@ func mustPort(envName string) (int, error) {
 	return port, nil
 }
 
-func mustPositiveInt(envName string) (int, error) {
-	value := os.Getenv(envName)
+func getPositiveIntEnv(envName string) (int, error) {
+	value, err := getRequiredEnv(envName)
+	if err != nil {
+		return 0, err
+	}
+
 	number, err := strconv.Atoi(value)
 	if err != nil || number < 0 {
 		return 0, fmt.Errorf("invalid %s=%q", envName, value)
