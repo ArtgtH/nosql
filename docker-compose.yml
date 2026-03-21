@@ -6,3 +6,11 @@ services:
     ports:
       - "${APP_BIND_IP}:${APP_PORT}:${APP_PORT}"
     restart: unless-stopped
+
+  redis:
+    image: redis:8.0
+    env_file:
+      - .env.local
+    restart: always
+    ports:
+      - "${APP_BIND_IP}:${REDIS_PORT}:${REDIS_PORT}"
