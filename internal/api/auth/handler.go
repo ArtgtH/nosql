@@ -77,6 +77,18 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 	sid := sessionHTTP.ReadSID(r)
 
+	session, found, err := h.sessions.Get(r.Context(), sid)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	if !found || session.UserID == "" {
+		h.refreshExistingSession(r, w, sid)
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
 	if err := h.sessions.Delete(r.Context(), sid); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
