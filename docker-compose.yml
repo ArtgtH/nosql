@@ -21,12 +21,14 @@ services:
       - .env.local
     restart: always
     environment:
-      MONGO_INITDB_ROOT_USERNAME: "${MONGODB_USER}"
-      MONGO_INITDB_ROOT_PASSWORD: "${MONGODB_PASSWORD}"
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: root
+      MONGO_INITDB_DATABASE: "${MONGODB_DATABASE}"
     ports:
       - "${APP_BIND_IP}:${MONGODB_PORT}:${MONGODB_PORT}"
     volumes:
       - mongo_data:/data/db
+      - ./mongo-init.sh:/docker-entrypoint-initdb.d/mongo-init.sh:ro
 
 volumes:
   mongo_data:

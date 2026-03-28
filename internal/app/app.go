@@ -59,12 +59,6 @@ func NewApp(cfg config.Config) (*App, error) {
 
 		db := mongoClient.Database(cfg.Mongo.Database)
 
-		if err := mongoInfra.EnsureIndexes(ctx, db); err != nil {
-			_ = mongoClient.Disconnect(context.Background())
-			_ = redisClient.Close()
-			return nil, err
-		}
-
 		userRepo := mongoInfra.NewUserRepository(db)
 		eventRepo := mongoInfra.NewEventRepository(db)
 
@@ -75,6 +69,15 @@ func NewApp(cfg config.Config) (*App, error) {
 		userHandler = usersHTTP.NewHandler(userSvc, sessionSvc, cfg.UserSessionTTL)
 		authHandler = authHTTP.NewHandler(authSvc, sessionSvc, cfg.UserSessionTTL)
 		eventHandler = eventsHTTP.NewHandler(eventSvc, sessionSvc, cfg.UserSessionTTL)
+
+		go func() {
+			indexCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+
+			if err := mongoInfra.EnsureIndexes(indexCtx, db); err != nil {
+				log.Printf("mongo ensure indexes failed: %v", err)
+			}
+		}()
 	}
 
 	router := api.NewRouter(
