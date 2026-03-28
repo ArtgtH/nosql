@@ -16,10 +16,19 @@ type RedisConfig struct {
 	DB       int
 }
 
+type MongoConfig struct {
+	Database string
+	User     string
+	Password string
+	Host     string
+	Port     int
+}
+
 type Config struct {
 	Port           int
 	UserSessionTTL time.Duration
 	Redis          RedisConfig
+	Mongo          MongoConfig
 }
 
 func Load() (Config, error) {
@@ -39,9 +48,6 @@ func Load() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
-	if redisHost == "" {
-		return Config{}, fmt.Errorf("REDIS_HOST is required")
-	}
 
 	redisPort, err := getPortEnv("REDIS_PORT")
 	if err != nil {
@@ -57,6 +63,34 @@ func Load() (Config, error) {
 		return Config{}, fmt.Errorf("invalid REDIS_DB=%q", redisDBStr)
 	}
 
+	mongoDatabase := os.Getenv("MONGODB_DATABASE")
+	if mongoDatabase == "" {
+		mongoDatabase = os.Getenv("MONGODB_DATABSE")
+	}
+	if mongoDatabase == "" {
+		return Config{}, fmt.Errorf("MONGODB_DATABASE is required")
+	}
+
+	mongoUser, err := getRequiredEnv("MONGODB_USER")
+	if err != nil {
+		return Config{}, err
+	}
+
+	mongoPassword, err := getRequiredEnv("MONGODB_PASSWORD")
+	if err != nil {
+		return Config{}, err
+	}
+
+	mongoHost, err := getRequiredEnv("MONGODB_HOST")
+	if err != nil {
+		return Config{}, err
+	}
+
+	mongoPort, err := getPortEnv("MONGODB_PORT")
+	if err != nil {
+		return Config{}, err
+	}
+
 	return Config{
 		Port:           port,
 		UserSessionTTL: time.Duration(ttlSeconds) * time.Second,
@@ -65,6 +99,13 @@ func Load() (Config, error) {
 			Port:     redisPort,
 			Password: os.Getenv("REDIS_PASSWORD"),
 			DB:       redisDB,
+		},
+		Mongo: MongoConfig{
+			Database: mongoDatabase,
+			User:     mongoUser,
+			Password: mongoPassword,
+			Host:     mongoHost,
+			Port:     mongoPort,
 		},
 	}, nil
 }

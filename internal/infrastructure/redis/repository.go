@@ -45,10 +45,15 @@ func (r *SessionRepository) Create(
 			}
 
 			_, err = tx.TxPipelined(ctx, func(pipe goredis.Pipeliner) error {
-				pipe.HSet(ctx, key,
-					"created_at", s.CreatedAt.Format(time.RFC3339),
-					"updated_at", s.UpdatedAt.Format(time.RFC3339),
-				)
+				fields := map[string]any{
+					"created_at": s.CreatedAt.Format(time.RFC3339),
+					"updated_at": s.UpdatedAt.Format(time.RFC3339),
+				}
+				if s.UserID != "" {
+					fields["user_id"] = s.UserID
+				}
+
+				pipe.HSet(ctx, key, fields)
 				pipe.Expire(ctx, key, ttl)
 				return nil
 			})
@@ -116,4 +121,96 @@ func (r *SessionRepository) Refresh(
 	}
 
 	return false, goredis.TxFailedErr
+}
+
+func (r *SessionRepository) Get(
+	ctx context.Context,
+	sid string,
+) (sessionService.Session, bool, error) {
+	key := r.key(sid)
+
+	values, err := r.client.HGetAll(ctx, key).Result()
+	if err != nil {
+		return sessionService.Session{}, false, err
+	}
+	if len(values) == 0 {
+		return sessionService.Session{}, false, nil
+	}
+
+	session := sessionService.Session{
+		ID:     sid,
+		UserID: values["user_id"],
+	}
+
+	if createdAt := values["created_at"]; createdAt != "" {
+		t, err := time.Parse(time.RFC3339, createdAt)
+		if err != nil {
+			return sessionService.Session{}, false, err
+		}
+		session.CreatedAt = t
+	}
+
+	if updatedAt := values["updated_at"]; updatedAt != "" {
+		t, err := time.Parse(time.RFC3339, updatedAt)
+		if err != nil {
+			return sessionService.Session{}, false, err
+		}
+		session.UpdatedAt = t
+	}
+
+	return session, true, nil
+}
+
+func (r *SessionRepository) SetUser(
+	ctx context.Context,
+	sid string,
+	userID string,
+	updatedAt time.Time,
+	ttl time.Duration,
+) (bool, error) {
+	key := r.key(sid)
+
+	for i := 0; i < maxRetries; i++ {
+		var found bool
+
+		err := r.client.Watch(ctx, func(tx *goredis.Tx) error {
+			exists, err := tx.Exists(ctx, key).Result()
+			if err != nil {
+				return err
+			}
+			if exists == 0 {
+				found = false
+				return nil
+			}
+
+			_, err = tx.TxPipelined(ctx, func(pipe goredis.Pipeliner) error {
+				pipe.HSet(ctx, key,
+					"user_id", userID,
+					"updated_at", updatedAt.Format(time.RFC3339),
+				)
+				pipe.Expire(ctx, key, ttl)
+				return nil
+			})
+			if err != nil {
+				return err
+			}
+
+			found = true
+			return nil
+		}, key)
+
+		if err == nil {
+			return found, nil
+		}
+		if errors.Is(err, goredis.TxFailedErr) {
+			continue
+		}
+		return false, err
+	}
+
+	return false, goredis.TxFailedErr
+}
+
+func (r *SessionRepository) Delete(ctx context.Context, sid string) error {
+	return r.client.Del(ctx, r.key(sid)).Err()
 }

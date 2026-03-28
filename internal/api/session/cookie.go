@@ -24,3 +24,13 @@ func WriteSID(w http.ResponseWriter, sid string, ttl time.Duration) {
 		MaxAge:   int(ttl.Seconds()),
 	})
 }
+
+func DeleteSID(w http.ResponseWriter) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     sessionService.CookieName,
+		Value:    "",
+		Path:     "/",
+		HttpOnly: true,
+		MaxAge:   -1,
+	})
+}

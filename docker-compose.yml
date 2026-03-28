@@ -6,6 +6,9 @@ services:
     ports:
       - "${APP_BIND_IP}:${APP_PORT}:${APP_PORT}"
     restart: unless-stopped
+    depends_on:
+      - redis
+      - mongo
 
   redis:
     image: redis:8.0
@@ -14,3 +17,19 @@ services:
     restart: always
     ports:
       - "${APP_BIND_IP}:${REDIS_PORT}:${REDIS_PORT}"
+
+  mongo:
+    image: mongo:8.0
+    env_file:
+      - .env.local
+    restart: always
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: "${MONGODB_USER}"
+      MONGO_INITDB_ROOT_PASSWORD: "${MONGODB_PASSWORD}"
+    ports:
+      - "${APP_BIND_IP}:${MONGODB_PORT}:${MONGODB_PORT}"
+    volumes:
+      - mongo_data:/data/db
+
+volumes:
+  mongo_data:

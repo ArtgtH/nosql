@@ -9,39 +9,81 @@ import (
 	"time"
 
 	api "nosql/internal/api"
+	authHTTP "nosql/internal/api/auth"
+	eventsHTTP "nosql/internal/api/events"
 	healthHTTP "nosql/internal/api/health"
 	sessionHTTP "nosql/internal/api/session"
+	usersHTTP "nosql/internal/api/users"
 	"nosql/internal/config"
+	mongoInfra "nosql/internal/infrastructure/mongo"
 	redisInfra "nosql/internal/infrastructure/redis"
-	sessionservice "nosql/internal/service/session"
+	authService "nosql/internal/service/auth"
+	eventsService "nosql/internal/service/events"
+	sessionService "nosql/internal/service/session"
+	usersService "nosql/internal/service/users"
 
 	goredis "github.com/redis/go-redis/v9"
+	gomongo "go.mongodb.org/mongo-driver/mongo"
 )
 
 type App struct {
 	server *stdhttp.Server
 	redis  *goredis.Client
+	mongo  *gomongo.Client
 }
 
-func NewApp(cfg config.Config) *App {
+func NewApp(cfg config.Config) (*App, error) {
 	redisClient := redisInfra.NewClient(cfg)
 
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	mongoClient, err := mongoInfra.NewClient(ctx, cfg)
+	if err != nil {
+		_ = redisClient.Close()
+		return nil, err
+	}
+
+	db := mongoClient.Database(cfg.Mongo.Database)
+
+	if err := mongoInfra.EnsureIndexes(ctx, db); err != nil {
+		_ = mongoClient.Disconnect(context.Background())
+		_ = redisClient.Close()
+		return nil, err
+	}
+
 	sessionRepo := redisInfra.NewSessionRepository(redisClient)
-	sessionService := sessionservice.NewService(sessionRepo, cfg.UserSessionTTL)
+	userRepo := mongoInfra.NewUserRepository(db)
+	eventRepo := mongoInfra.NewEventRepository(db)
+
+	sessionSvc := sessionService.NewService(sessionRepo, cfg.UserSessionTTL)
+	userSvc := usersService.NewService(userRepo)
+	authSvc := authService.NewService(userRepo)
+	eventSvc := eventsService.NewService(eventRepo)
 
 	healthHandler := healthHTTP.NewHandler(cfg.UserSessionTTL)
-	sessionHandler := sessionHTTP.NewHandler(sessionService, cfg.UserSessionTTL)
+	sessionHandler := sessionHTTP.NewHandler(sessionSvc, cfg.UserSessionTTL)
+	userHandler := usersHTTP.NewHandler(userSvc, sessionSvc, cfg.UserSessionTTL)
+	authHandler := authHTTP.NewHandler(authSvc, sessionSvc, cfg.UserSessionTTL)
+	eventHandler := eventsHTTP.NewHandler(eventSvc, sessionSvc, cfg.UserSessionTTL)
 
-	router := api.NewRouter(healthHandler, sessionHandler)
+	router := api.NewRouter(
+		healthHandler,
+		sessionHandler,
+		userHandler,
+		authHandler,
+		eventHandler,
+	)
 
 	return &App{
 		redis: redisClient,
+		mongo: mongoClient,
 		server: &stdhttp.Server{
 			Addr:              fmt.Sprintf(":%d", cfg.Port),
 			Handler:           router,
 			ReadHeaderTimeout: 5 * time.Second,
 		},
-	}
+	}, nil
 }
 
 func (a *App) Run() error {
@@ -59,11 +101,25 @@ func (a *App) Run() error {
 func (a *App) Shutdown(ctx context.Context) error {
 	serverErr := a.server.Shutdown(ctx)
 
-	if a.redis != nil {
-		if err := a.redis.Close(); err != nil && serverErr == nil {
-			return err
-		}
+	var mongoErr error
+	if a.mongo != nil {
+		mongoErr = a.mongo.Disconnect(ctx)
 	}
 
-	return serverErr
+	var redisErr error
+	if a.redis != nil {
+		redisErr = a.redis.Close()
+	}
+
+	if serverErr != nil {
+		return serverErr
+	}
+	if mongoErr != nil {
+		return mongoErr
+	}
+	if redisErr != nil {
+		return redisErr
+	}
+
+	return nil
 }

@@ -18,7 +18,10 @@ func main() {
 		log.Fatal(err)
 	}
 
-	a := app.NewApp(cfg)
+	a, err := app.NewApp(cfg)
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	go func() {
 		if err := a.Run(); err != nil {
@@ -33,5 +36,7 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	a.Shutdown(ctx)
+	if err := a.Shutdown(ctx); err != nil {
+		log.Fatal(err)
+	}
 }
