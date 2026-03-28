@@ -13,16 +13,12 @@ import (
 )
 
 func NewClient(ctx context.Context, cfg config.Config) (*gomongo.Client, error) {
-	dbName := url.QueryEscape(cfg.Mongo.Database)
-
 	uri := fmt.Sprintf(
-		"mongodb://%s:%s@%s:%d/%s?authSource=%s",
+		"mongodb://%s:%s@%s:%d/?authSource=admin",
 		url.QueryEscape(cfg.Mongo.User),
 		url.QueryEscape(cfg.Mongo.Password),
 		cfg.Mongo.Host,
 		cfg.Mongo.Port,
-		dbName,
-		dbName,
 	)
 
 	client, err := gomongo.Connect(ctx, options.Client().ApplyURI(uri))

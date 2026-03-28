@@ -59,18 +59,11 @@ func Load() (Config, error) {
 	if err != nil {
 		return Config{}, fmt.Errorf("REDIS_DB is required")
 	}
+
 	redisDB, err := strconv.Atoi(redisDBStr)
 	if err != nil || redisDB < 0 {
 		return Config{}, fmt.Errorf("invalid REDIS_DB=%q", redisDBStr)
 	}
-
-	mongoDatabase := firstNonEmpty(os.Getenv("MONGODB_DATABASE"), os.Getenv("MONGODB_DATABSE"))
-	mongoUser := os.Getenv("MONGODB_USER")
-	mongoPassword := os.Getenv("MONGODB_PASSWORD")
-	mongoHost := os.Getenv("MONGODB_HOST")
-	mongoPortStr := os.Getenv("MONGODB_PORT")
-
-	mongoAnySet := mongoDatabase != "" || mongoUser != "" || mongoPassword != "" || mongoHost != "" || mongoPortStr != ""
 
 	cfg := Config{
 		Port:           port,
@@ -82,6 +75,14 @@ func Load() (Config, error) {
 			DB:       redisDB,
 		},
 	}
+
+	mongoDatabase := firstNonEmpty(os.Getenv("MONGODB_DATABASE"), os.Getenv("MONGODB_DATABSE"))
+	mongoUser := os.Getenv("MONGODB_USER")
+	mongoPassword := os.Getenv("MONGODB_PASSWORD")
+	mongoHost := os.Getenv("MONGODB_HOST")
+	mongoPortStr := os.Getenv("MONGODB_PORT")
+
+	mongoAnySet := mongoDatabase != "" || mongoUser != "" || mongoPassword != "" || mongoHost != "" || mongoPortStr != ""
 
 	if !mongoAnySet {
 		return cfg, nil
@@ -98,6 +99,9 @@ func Load() (Config, error) {
 	}
 	if mongoHost == "" {
 		return Config{}, fmt.Errorf("MONGODB_HOST is required")
+	}
+	if mongoPortStr == "" {
+		return Config{}, fmt.Errorf("MONGODB_PORT is required")
 	}
 
 	mongoPort, err := strconv.Atoi(mongoPortStr)
