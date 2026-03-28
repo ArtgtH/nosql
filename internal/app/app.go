@@ -35,37 +35,47 @@ type App struct {
 func NewApp(cfg config.Config) (*App, error) {
 	redisClient := redisInfra.NewClient(cfg)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	mongoClient, err := mongoInfra.NewClient(ctx, cfg)
-	if err != nil {
-		_ = redisClient.Close()
-		return nil, err
-	}
-
-	db := mongoClient.Database(cfg.Mongo.Database)
-
-	if err := mongoInfra.EnsureIndexes(ctx, db); err != nil {
-		_ = mongoClient.Disconnect(context.Background())
-		_ = redisClient.Close()
-		return nil, err
-	}
-
 	sessionRepo := redisInfra.NewSessionRepository(redisClient)
-	userRepo := mongoInfra.NewUserRepository(db)
-	eventRepo := mongoInfra.NewEventRepository(db)
-
 	sessionSvc := sessionService.NewService(sessionRepo, cfg.UserSessionTTL)
-	userSvc := usersService.NewService(userRepo)
-	authSvc := authService.NewService(userRepo)
-	eventSvc := eventsService.NewService(eventRepo)
 
 	healthHandler := healthHTTP.NewHandler(cfg.UserSessionTTL)
 	sessionHandler := sessionHTTP.NewHandler(sessionSvc, cfg.UserSessionTTL)
-	userHandler := usersHTTP.NewHandler(userSvc, sessionSvc, cfg.UserSessionTTL)
-	authHandler := authHTTP.NewHandler(authSvc, sessionSvc, cfg.UserSessionTTL)
-	eventHandler := eventsHTTP.NewHandler(eventSvc, sessionSvc, cfg.UserSessionTTL)
+
+	var mongoClient *gomongo.Client
+	var userHandler *usersHTTP.Handler
+	var authHandler *authHTTP.Handler
+	var eventHandler *eventsHTTP.Handler
+
+	if cfg.Mongo.Enabled {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		var err error
+		mongoClient, err = mongoInfra.NewClient(ctx, cfg)
+		if err != nil {
+			_ = redisClient.Close()
+			return nil, err
+		}
+
+		db := mongoClient.Database(cfg.Mongo.Database)
+
+		if err := mongoInfra.EnsureIndexes(ctx, db); err != nil {
+			_ = mongoClient.Disconnect(context.Background())
+			_ = redisClient.Close()
+			return nil, err
+		}
+
+		userRepo := mongoInfra.NewUserRepository(db)
+		eventRepo := mongoInfra.NewEventRepository(db)
+
+		userSvc := usersService.NewService(userRepo)
+		authSvc := authService.NewService(userRepo)
+		eventSvc := eventsService.NewService(eventRepo)
+
+		userHandler = usersHTTP.NewHandler(userSvc, sessionSvc, cfg.UserSessionTTL)
+		authHandler = authHTTP.NewHandler(authSvc, sessionSvc, cfg.UserSessionTTL)
+		eventHandler = eventsHTTP.NewHandler(eventSvc, sessionSvc, cfg.UserSessionTTL)
+	}
 
 	router := api.NewRouter(
 		healthHandler,

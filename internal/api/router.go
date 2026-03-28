@@ -30,13 +30,17 @@ func NewRouter(
 	r.Get("/health", healthHandler.Health)
 	r.Post("/session", sessionHandler.CreateOrRefresh)
 
-	r.Post("/users", userHandler.Create)
-
-	r.Post("/auth/login", authHandler.Login)
-	r.Post("/auth/logout", authHandler.Logout)
-
-	r.Post("/events", eventHandler.Create)
-	r.Get("/events", eventHandler.List)
+	if userHandler != nil {
+		r.Post("/users", userHandler.Create)
+	}
+	if authHandler != nil {
+		r.Post("/auth/login", authHandler.Login)
+		r.Post("/auth/logout", authHandler.Logout)
+	}
+	if eventHandler != nil {
+		r.Post("/events", eventHandler.Create)
+		r.Get("/events", eventHandler.List)
+	}
 
 	return r
 }

@@ -17,6 +17,7 @@ type RedisConfig struct {
 }
 
 type MongoConfig struct {
+	Enabled  bool
 	Database string
 	User     string
 	Password string
@@ -63,35 +64,15 @@ func Load() (Config, error) {
 		return Config{}, fmt.Errorf("invalid REDIS_DB=%q", redisDBStr)
 	}
 
-	mongoDatabase := os.Getenv("MONGODB_DATABASE")
-	if mongoDatabase == "" {
-		mongoDatabase = os.Getenv("MONGODB_DATABSE")
-	}
-	if mongoDatabase == "" {
-		return Config{}, fmt.Errorf("MONGODB_DATABASE is required")
-	}
+	mongoDatabase := firstNonEmpty(os.Getenv("MONGODB_DATABASE"), os.Getenv("MONGODB_DATABSE"))
+	mongoUser := os.Getenv("MONGODB_USER")
+	mongoPassword := os.Getenv("MONGODB_PASSWORD")
+	mongoHost := os.Getenv("MONGODB_HOST")
+	mongoPortStr := os.Getenv("MONGODB_PORT")
 
-	mongoUser, err := getRequiredEnv("MONGODB_USER")
-	if err != nil {
-		return Config{}, err
-	}
+	mongoAnySet := mongoDatabase != "" || mongoUser != "" || mongoPassword != "" || mongoHost != "" || mongoPortStr != ""
 
-	mongoPassword, err := getRequiredEnv("MONGODB_PASSWORD")
-	if err != nil {
-		return Config{}, err
-	}
-
-	mongoHost, err := getRequiredEnv("MONGODB_HOST")
-	if err != nil {
-		return Config{}, err
-	}
-
-	mongoPort, err := getPortEnv("MONGODB_PORT")
-	if err != nil {
-		return Config{}, err
-	}
-
-	return Config{
+	cfg := Config{
 		Port:           port,
 		UserSessionTTL: time.Duration(ttlSeconds) * time.Second,
 		Redis: RedisConfig{
@@ -100,14 +81,49 @@ func Load() (Config, error) {
 			Password: os.Getenv("REDIS_PASSWORD"),
 			DB:       redisDB,
 		},
-		Mongo: MongoConfig{
-			Database: mongoDatabase,
-			User:     mongoUser,
-			Password: mongoPassword,
-			Host:     mongoHost,
-			Port:     mongoPort,
-		},
-	}, nil
+	}
+
+	if !mongoAnySet {
+		return cfg, nil
+	}
+
+	if mongoDatabase == "" {
+		return Config{}, fmt.Errorf("MONGODB_DATABASE is required")
+	}
+	if mongoUser == "" {
+		return Config{}, fmt.Errorf("MONGODB_USER is required")
+	}
+	if mongoPassword == "" {
+		return Config{}, fmt.Errorf("MONGODB_PASSWORD is required")
+	}
+	if mongoHost == "" {
+		return Config{}, fmt.Errorf("MONGODB_HOST is required")
+	}
+
+	mongoPort, err := strconv.Atoi(mongoPortStr)
+	if err != nil || mongoPort <= 1000 || mongoPort > 65535 {
+		return Config{}, fmt.Errorf("invalid MONGODB_PORT=%q", mongoPortStr)
+	}
+
+	cfg.Mongo = MongoConfig{
+		Enabled:  true,
+		Database: mongoDatabase,
+		User:     mongoUser,
+		Password: mongoPassword,
+		Host:     mongoHost,
+		Port:     mongoPort,
+	}
+
+	return cfg, nil
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func getRequiredEnv(envName string) (string, error) {
