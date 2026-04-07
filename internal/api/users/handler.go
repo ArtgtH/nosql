@@ -65,7 +65,7 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	session, err := h.sessions.CreateForUser(r.Context(), userID)
+	session, err := h.sessions.Create(r.Context(), userID)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		return

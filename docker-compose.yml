@@ -21,8 +21,8 @@ services:
       - .env.local
     restart: always
     environment:
-      MONGO_INITDB_ROOT_USERNAME: root
-      MONGO_INITDB_ROOT_PASSWORD: root
+      MONGO_INITDB_ROOT_USERNAME: "${MONGO_INITDB_ROOT_USERNAME}"
+      MONGO_INITDB_ROOT_PASSWORD: "${MONGO_INITDB_ROOT_PASSWORD}"
       MONGO_INITDB_DATABASE: "${MONGODB_DATABASE}"
     ports:
       - "${APP_BIND_IP}:${MONGODB_PORT}:${MONGODB_PORT}"

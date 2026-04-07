@@ -34,7 +34,7 @@ func (s *Service) Upsert(ctx context.Context, sid string) (UpsertResult, error) 
 		}, nil
 	}
 
-	session, err = s.create(ctx, "")
+	session, err = s.Create(ctx, "")
 	if err != nil {
 		return UpsertResult{}, err
 	}
@@ -74,10 +74,6 @@ func (s *Service) RefreshIfExists(ctx context.Context, sid string) (Session, boo
 	}, true, nil
 }
 
-func (s *Service) CreateForUser(ctx context.Context, userID string) (Session, error) {
-	return s.create(ctx, userID)
-}
-
 func (s *Service) AttachUser(ctx context.Context, sid, userID string) (Session, error) {
 	now := time.Now().UTC()
 
@@ -95,7 +91,7 @@ func (s *Service) AttachUser(ctx context.Context, sid, userID string) (Session, 
 		}
 	}
 
-	return s.create(ctx, userID)
+	return s.Create(ctx, userID)
 }
 
 func (s *Service) Get(ctx context.Context, sid string) (Session, bool, error) {
@@ -114,7 +110,7 @@ func (s *Service) Delete(ctx context.Context, sid string) error {
 	return s.repo.Delete(ctx, sid)
 }
 
-func (s *Service) create(ctx context.Context, userID string) (Session, error) {
+func (s *Service) Create(ctx context.Context, userID string) (Session, error) {
 	now := time.Now().UTC()
 
 	for i := 0; i < 5; i++ {
