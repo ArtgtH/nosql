@@ -34,7 +34,6 @@ type App struct {
 
 func NewApp(cfg config.Config) (*App, error) {
 	redisClient := redisInfra.NewClient(cfg)
-
 	sessionRepo := redisInfra.NewSessionRepository(redisClient)
 	sessionSvc := sessionService.NewService(sessionRepo, cfg.UserSessionTTL)
 
@@ -66,9 +65,9 @@ func NewApp(cfg config.Config) (*App, error) {
 		authSvc := authService.NewService(userRepo)
 		eventSvc := eventsService.NewService(eventRepo)
 
-		userHandler = usersHTTP.NewHandler(userSvc, sessionSvc, cfg.UserSessionTTL)
+		userHandler = usersHTTP.NewHandler(userSvc, eventSvc, sessionSvc, cfg.UserSessionTTL)
 		authHandler = authHTTP.NewHandler(authSvc, sessionSvc, cfg.UserSessionTTL)
-		eventHandler = eventsHTTP.NewHandler(eventSvc, sessionSvc, cfg.UserSessionTTL)
+		eventHandler = eventsHTTP.NewHandler(eventSvc, userSvc, sessionSvc, cfg.UserSessionTTL)
 
 		go func() {
 			indexCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)

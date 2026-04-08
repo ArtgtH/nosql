@@ -5,6 +5,11 @@ services:
       - .env.local
     ports:
       - "${APP_BIND_IP}:${APP_PORT}:${APP_PORT}"
+    depends_on:
+      redis:
+        condition: service_started
+      mongo-router-init:
+        condition: service_completed_successfully
     restart: unless-stopped
 
   redis:
@@ -13,22 +18,201 @@ services:
       - .env.local
     restart: always
     ports:
-      - "${APP_BIND_IP}:${REDIS_PORT}:${REDIS_PORT}"
+      - "${APP_BIND_IP}:${REDIS_PORT}:6379"
 
-  mongo:
+  mongo-cfg-1:
+    image: mongo:8.0
+    command:
+      [
+        "sh",
+        "-c",
+        "cp /etc/mongo-keyfile /tmp/mongo-keyfile && chmod 400 /tmp/mongo-keyfile && exec mongod --configsvr --replSet cfgRS --port 27119 --bind_ip_all --keyFile /tmp/mongo-keyfile"
+      ]
+    volumes:
+      - mongo_cfg_1_data:/data/db
+      - ./mongo-scripts/mongo-keyfile:/etc/mongo-keyfile:ro
+    restart: always
+
+  mongo-cfg-2:
+    image: mongo:8.0
+    command:
+      [
+        "sh",
+        "-c",
+        "cp /etc/mongo-keyfile /tmp/mongo-keyfile && chmod 400 /tmp/mongo-keyfile && exec mongod --configsvr --replSet cfgRS --port 27120 --bind_ip_all --keyFile /tmp/mongo-keyfile"
+      ]
+    volumes:
+      - mongo_cfg_2_data:/data/db
+      - ./mongo-scripts/mongo-keyfile:/etc/mongo-keyfile:ro
+    restart: always
+
+  mongo-cfg-3:
+    image: mongo:8.0
+    command:
+      [
+        "sh",
+        "-c",
+        "cp /etc/mongo-keyfile /tmp/mongo-keyfile && chmod 400 /tmp/mongo-keyfile && exec mongod --configsvr --replSet cfgRS --port 27121 --bind_ip_all --keyFile /tmp/mongo-keyfile"
+      ]
+    volumes:
+      - mongo_cfg_3_data:/data/db
+      - ./mongo-scripts/mongo-keyfile:/etc/mongo-keyfile:ro
+    restart: always
+
+  mongo-shard1-a:
+    image: mongo:8.0
+    command:
+      [
+        "sh",
+        "-c",
+        "cp /etc/mongo-keyfile /tmp/mongo-keyfile && chmod 400 /tmp/mongo-keyfile && exec mongod --shardsvr --replSet shard1RS --port 27217 --bind_ip_all --keyFile /tmp/mongo-keyfile"
+      ]
+    volumes:
+      - mongo_shard1_a_data:/data/db
+      - ./mongo-scripts/mongo-keyfile:/etc/mongo-keyfile:ro
+    restart: always
+
+  mongo-shard1-b:
+    image: mongo:8.0
+    command:
+      [
+        "sh",
+        "-c",
+        "cp /etc/mongo-keyfile /tmp/mongo-keyfile && chmod 400 /tmp/mongo-keyfile && exec mongod --shardsvr --replSet shard1RS --port 27218 --bind_ip_all --keyFile /tmp/mongo-keyfile"
+      ]
+    volumes:
+      - mongo_shard1_b_data:/data/db
+      - ./mongo-scripts/mongo-keyfile:/etc/mongo-keyfile:ro
+    restart: always
+
+  mongo-shard1-c:
+    image: mongo:8.0
+    command:
+      [
+        "sh",
+        "-c",
+        "cp /etc/mongo-keyfile /tmp/mongo-keyfile && chmod 400 /tmp/mongo-keyfile && exec mongod --shardsvr --replSet shard1RS --port 27219 --bind_ip_all --keyFile /tmp/mongo-keyfile"
+      ]
+    volumes:
+      - mongo_shard1_c_data:/data/db
+      - ./mongo-scripts/mongo-keyfile:/etc/mongo-keyfile:ro
+    restart: always
+
+  mongo-shard2-a:
+    image: mongo:8.0
+    command:
+      [
+        "sh",
+        "-c",
+        "cp /etc/mongo-keyfile /tmp/mongo-keyfile && chmod 400 /tmp/mongo-keyfile && exec mongod --shardsvr --replSet shard2RS --port 27317 --bind_ip_all --keyFile /tmp/mongo-keyfile"
+      ]
+    volumes:
+      - mongo_shard2_a_data:/data/db
+      - ./mongo-scripts/mongo-keyfile:/etc/mongo-keyfile:ro
+    restart: always
+
+  mongo-shard2-b:
+    image: mongo:8.0
+    command:
+      [
+        "sh",
+        "-c",
+        "cp /etc/mongo-keyfile /tmp/mongo-keyfile && chmod 400 /tmp/mongo-keyfile && exec mongod --shardsvr --replSet shard2RS --port 27318 --bind_ip_all --keyFile /tmp/mongo-keyfile"
+      ]
+    volumes:
+      - mongo_shard2_b_data:/data/db
+      - ./mongo-scripts/mongo-keyfile:/etc/mongo-keyfile:ro
+    restart: always
+
+  mongo-shard2-c:
+    image: mongo:8.0
+    command:
+      [
+        "sh",
+        "-c",
+        "cp /etc/mongo-keyfile /tmp/mongo-keyfile && chmod 400 /tmp/mongo-keyfile && exec mongod --shardsvr --replSet shard2RS --port 27319 --bind_ip_all --keyFile /tmp/mongo-keyfile"
+      ]
+    volumes:
+      - mongo_shard2_c_data:/data/db
+      - ./mongo-scripts/mongo-keyfile:/etc/mongo-keyfile:ro
+    restart: always
+
+  mongo-cfg-rs-init:
+    image: mongo:8.0
+    network_mode: "service:mongo-cfg-1"
+    depends_on:
+      - mongo-cfg-1
+      - mongo-cfg-2
+      - mongo-cfg-3
+    entrypoint: ["sh", "/scripts/mongo-rs-init.sh", "cfg"]
+    volumes:
+      - ./mongo-scripts/mongo-rs-init.sh:/scripts/mongo-rs-init.sh:ro
+    restart: "no"
+
+  mongo-shard1-rs-init:
+    image: mongo:8.0
+    network_mode: "service:mongo-shard1-a"
+    depends_on:
+      - mongo-shard1-a
+      - mongo-shard1-b
+      - mongo-shard1-c
+    entrypoint: ["sh", "/scripts/mongo-rs-init.sh", "shard1"]
+    volumes:
+      - ./mongo-scripts/mongo-rs-init.sh:/scripts/mongo-rs-init.sh:ro
+    restart: "no"
+
+  mongo-shard2-rs-init:
+    image: mongo:8.0
+    network_mode: "service:mongo-shard2-a"
+    depends_on:
+      - mongo-shard2-a
+      - mongo-shard2-b
+      - mongo-shard2-c
+    entrypoint: ["sh", "/scripts/mongo-rs-init.sh", "shard2"]
+    volumes:
+      - ./mongo-scripts/mongo-rs-init.sh:/scripts/mongo-rs-init.sh:ro
+    restart: "no"
+
+  mongos:
+    image: mongo:8.0
+    command:
+      [
+        "sh",
+        "-c",
+        "cp /etc/mongo-keyfile /tmp/mongo-keyfile && chmod 400 /tmp/mongo-keyfile && exec mongos --configdb cfgRS/mongo-cfg-1:27119,mongo-cfg-2:27120,mongo-cfg-3:27121 --bind_ip_all --port 27017 --keyFile /tmp/mongo-keyfile"
+      ]
+    depends_on:
+      mongo-cfg-rs-init:
+        condition: service_completed_successfully
+      mongo-shard1-rs-init:
+        condition: service_completed_successfully
+      mongo-shard2-rs-init:
+        condition: service_completed_successfully
+    volumes:
+      - ./mongo-scripts/mongo-keyfile:/etc/mongo-keyfile:ro
+    restart: always
+    ports:
+      - "${APP_BIND_IP}:${MONGODB_PORT}:27017"
+
+  mongo-router-init:
     image: mongo:8.0
     env_file:
       - .env.local
-    restart: always
-    environment:
-      MONGO_INITDB_ROOT_USERNAME: "${MONGO_INITDB_ROOT_USERNAME}"
-      MONGO_INITDB_ROOT_PASSWORD: "${MONGO_INITDB_ROOT_PASSWORD}"
-      MONGO_INITDB_DATABASE: "${MONGODB_DATABASE}"
-    ports:
-      - "${APP_BIND_IP}:${MONGODB_PORT}:${MONGODB_PORT}"
+    network_mode: "service:mongos"
+    depends_on:
+      - mongos
+    entrypoint: ["sh", "/scripts/mongo-init.sh"]
     volumes:
-      - mongo_data:/data/db
-      - ./mongo-init.sh:/docker-entrypoint-initdb.d/mongo-init.sh:ro
+      - ./mongo-scripts/mongo-init.sh:/scripts/mongo-init.sh:ro
+    restart: "no"
 
 volumes:
-  mongo_data:
+  mongo_cfg_1_data:
+  mongo_cfg_2_data:
+  mongo_cfg_3_data:
+  mongo_shard1_a_data:
+  mongo_shard1_b_data:
+  mongo_shard1_c_data:
+  mongo_shard2_a_data:
+  mongo_shard2_b_data:
+  mongo_shard2_c_data:

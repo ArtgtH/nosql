@@ -83,7 +83,6 @@ func Load() (Config, error) {
 	mongoPortStr := os.Getenv("MONGODB_PORT")
 
 	mongoAnySet := mongoDatabase != "" || mongoUser != "" || mongoPassword != "" || mongoHost != "" || mongoPortStr != ""
-
 	if !mongoAnySet {
 		return cfg, nil
 	}
@@ -148,6 +147,7 @@ func getPortEnv(envName string) (int, error) {
 	if err != nil || port <= 1000 || port > 65535 {
 		return 0, fmt.Errorf("invalid %s=%q", envName, value)
 	}
+
 	return port, nil
 }
 
@@ -161,5 +161,6 @@ func getPositiveIntEnv(envName string) (int, error) {
 	if err != nil || number < 0 {
 		return 0, fmt.Errorf("invalid %s=%q", envName, value)
 	}
+
 	return number, nil
 }
