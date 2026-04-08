@@ -187,7 +187,15 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	createdBy := ""
+	createdBy := strings.TrimSpace(r.URL.Query().Get("user_id"))
+	if createdBy != "" {
+		if _, err := primitive.ObjectIDFromHex(createdBy); err != nil {
+			h.refreshExistingSession(r, w, sid)
+			transport.Message(w, r, http.StatusBadRequest, `invalid "user_id" field`)
+			return
+		}
+	}
+
 	username := strings.TrimSpace(r.URL.Query().Get("user"))
 	if username != "" {
 		user, found, err := h.users.FindByUsername(r.Context(), username)
@@ -203,6 +211,16 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 			})
 			return
 		}
+
+		if createdBy != "" && createdBy != user.ID.Hex() {
+			h.refreshExistingSession(r, w, sid)
+			transport.JSON(w, r, http.StatusOK, listEventsResponse{
+				Events: []eventResponse{},
+				Count:  0,
+			})
+			return
+		}
+
 		createdBy = user.ID.Hex()
 	}
 

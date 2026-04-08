@@ -173,7 +173,7 @@ services:
       - ./mongo-scripts/mongo-rs-init.sh:/scripts/mongo-rs-init.sh:ro
     restart: "no"
 
-  mongos:
+  mongo:
     image: mongo:8.0
     command:
       [
@@ -198,9 +198,9 @@ services:
     image: mongo:8.0
     env_file:
       - .env.local
-    network_mode: "service:mongos"
+    network_mode: "service:mongo"
     depends_on:
-      - mongos
+      - mongo
     entrypoint: ["sh", "/scripts/mongo-init.sh"]
     volumes:
       - ./mongo-scripts/mongo-init.sh:/scripts/mongo-init.sh:ro
