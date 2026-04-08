@@ -12,6 +12,13 @@ func JSON(w http.ResponseWriter, r *http.Request, status int, v any) {
 	render.JSON(w, r, v)
 }
 
+func Message(w http.ResponseWriter, r *http.Request, status int, message string) {
+	render.Status(r, status)
+	render.JSON(w, r, map[string]string{
+		"message": message,
+	})
+}
+
 func ERROR(w http.ResponseWriter, r *http.Request, status int, err error) {
 	reqID := middleware.GetReqID(r.Context())
 

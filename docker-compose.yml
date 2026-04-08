@@ -6,3 +6,29 @@ services:
     ports:
       - "${APP_BIND_IP}:${APP_PORT}:${APP_PORT}"
     restart: unless-stopped
+
+  redis:
+    image: redis:8.0
+    env_file:
+      - .env.local
+    restart: always
+    ports:
+      - "${APP_BIND_IP}:${REDIS_PORT}:${REDIS_PORT}"
+
+  mongo:
+    image: mongo:8.0
+    env_file:
+      - .env.local
+    restart: always
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: "${MONGO_INITDB_ROOT_USERNAME}"
+      MONGO_INITDB_ROOT_PASSWORD: "${MONGO_INITDB_ROOT_PASSWORD}"
+      MONGO_INITDB_DATABASE: "${MONGODB_DATABASE}"
+    ports:
+      - "${APP_BIND_IP}:${MONGODB_PORT}:${MONGODB_PORT}"
+    volumes:
+      - mongo_data:/data/db
+      - ./mongo-init.sh:/docker-entrypoint-initdb.d/mongo-init.sh:ro
+
+volumes:
+  mongo_data:
