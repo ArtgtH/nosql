@@ -24,6 +24,7 @@ if (!admin.getUser(rootUser)) {
     user: rootUser,
     pwd: rootPass,
     roles: [{ role: "root", db: "admin" }],
+    mechanisms: ["SCRAM-SHA-1", "SCRAM-SHA-256"],
   });
 }
 
@@ -60,6 +61,7 @@ if (appDB.getUser(appUser)) {
       { role: "root", db: "admin" },
       { role: "dbOwner", db: appDbName },
     ],
+    mechanisms: ["SCRAM-SHA-1", "SCRAM-SHA-256"],
   });
 } else {
   appDB.createUser({
@@ -69,6 +71,7 @@ if (appDB.getUser(appUser)) {
       { role: "root", db: "admin" },
       { role: "dbOwner", db: appDbName },
     ],
+    mechanisms: ["SCRAM-SHA-1", "SCRAM-SHA-256"],
   });
 }
 

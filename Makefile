@@ -1,26 +1,36 @@
-.DEFAULT_GOAL = run
+.DEFAULT_GOAL := run
 
-# Runs all services in detached mode.
+COMPOSE = docker compose --env-file .env.local
+
 .PHONY: run
 run:
-	docker compose --env-file .env.local up -d --build
+	$(COMPOSE) up -d --build
+	@cid="$$($(COMPOSE) ps -q mongo-router-init)"; \
+	while [ -z "$$cid" ]; do \
+		sleep 1; \
+		cid="$$($(COMPOSE) ps -q mongo-router-init)"; \
+	done; \
+	while [ "$$(docker inspect -f '{{.State.Status}}' $$cid)" != "exited" ]; do \
+		sleep 1; \
+	done; \
+	test "$$(docker inspect -f '{{.State.ExitCode}}' $$cid)" = "0"
+	@port="$$(awk -F= '$$1=="APP_PORT"{print $$2}' .env.local)"; \
+	until curl -fsS "http://localhost:$$port/health" >/dev/null 2>&1; do \
+		sleep 1; \
+	done
 
-# Runs all services without detached mode (for debugging).
 .PHONY: rund
 rund:
-	docker compose --env-file .env.local up --build
+	$(COMPOSE) up --build
 
-# Shows all service statuses.
-.PHONY: services
-services:
-	docker compose ps
-
-# Stops all running services.
 .PHONY: stop
 stop:
-	docker compose down
+	$(COMPOSE) down
 
-# Cleans up all resources including volumes.
 .PHONY: clean
 clean:
-	docker compose down -v
+	$(COMPOSE) down -v
+
+.PHONY: logs
+logs:
+	$(COMPOSE) logs -f
