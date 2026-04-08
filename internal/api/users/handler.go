@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -133,7 +134,7 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	id := r.URL.Query().Get("id")
+	id := strings.TrimSpace(r.URL.Query().Get("id"))
 	if id != "" {
 		if _, err := primitive.ObjectIDFromHex(id); err != nil {
 			h.refreshExistingSession(r, w, sid)
@@ -144,7 +145,7 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 
 	users, err := h.users.List(r.Context(), usersService.ListFilter{
 		ID:     id,
-		Name:   r.URL.Query().Get("name"),
+		Name:   strings.TrimSpace(r.URL.Query().Get("name")),
 		Limit:  limit,
 		Offset: offset,
 	})
@@ -197,8 +198,76 @@ func (h *Handler) ListEvents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	limit, err := parseUintQuery(r, "limit")
+	if err != nil {
+		h.refreshExistingSession(r, w, sid)
+		transport.Message(w, r, http.StatusBadRequest, `invalid "limit" field`)
+		return
+	}
+
+	offset, err := parseUintQuery(r, "offset")
+	if err != nil {
+		h.refreshExistingSession(r, w, sid)
+		transport.Message(w, r, http.StatusBadRequest, `invalid "offset" field`)
+		return
+	}
+
+	id := strings.TrimSpace(r.URL.Query().Get("id"))
+	if id != "" {
+		if _, err := primitive.ObjectIDFromHex(id); err != nil {
+			h.refreshExistingSession(r, w, sid)
+			transport.Message(w, r, http.StatusBadRequest, `invalid "id" field`)
+			return
+		}
+	}
+
+	category := strings.TrimSpace(r.URL.Query().Get("category"))
+	if category != "" && !isValidCategory(category) {
+		h.refreshExistingSession(r, w, sid)
+		transport.Message(w, r, http.StatusBadRequest, `invalid "category" field`)
+		return
+	}
+
+	priceFrom, err := parseOptionalUintQuery(r, "price_from")
+	if err != nil {
+		h.refreshExistingSession(r, w, sid)
+		transport.Message(w, r, http.StatusBadRequest, `invalid "price_from" field`)
+		return
+	}
+
+	priceTo, err := parseOptionalUintQuery(r, "price_to")
+	if err != nil {
+		h.refreshExistingSession(r, w, sid)
+		transport.Message(w, r, http.StatusBadRequest, `invalid "price_to" field`)
+		return
+	}
+
+	dateFrom, err := parseOptionalDateQuery(r, "date_from", "started_date_from")
+	if err != nil {
+		h.refreshExistingSession(r, w, sid)
+		transport.Message(w, r, http.StatusBadRequest, `invalid "date_from" field`)
+		return
+	}
+
+	dateToExclusive, err := parseOptionalDateToExclusiveQuery(r, "date_to", "started_date_to")
+	if err != nil {
+		h.refreshExistingSession(r, w, sid)
+		transport.Message(w, r, http.StatusBadRequest, `invalid "date_to" field`)
+		return
+	}
+
 	events, err := h.events.List(r.Context(), eventsService.ListFilter{
-		CreatedBy: user.ID.Hex(),
+		ID:              id,
+		Title:           strings.TrimSpace(r.URL.Query().Get("title")),
+		Category:        category,
+		City:            strings.TrimSpace(r.URL.Query().Get("city")),
+		CreatedBy:       user.ID.Hex(),
+		DateFrom:        dateFrom,
+		DateToExclusive: dateToExclusive,
+		PriceFrom:       priceFrom,
+		PriceTo:         priceTo,
+		Limit:           limit,
+		Offset:          offset,
 	})
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -252,6 +321,67 @@ func parseUintQuery(r *http.Request, name string) (uint64, error) {
 		return 0, nil
 	}
 	return strconv.ParseUint(value, 10, 64)
+}
+
+func parseOptionalUintQuery(r *http.Request, name string) (*uint64, error) {
+	value := r.URL.Query().Get(name)
+	if value == "" {
+		return nil, nil
+	}
+
+	parsed, err := strconv.ParseUint(value, 10, 64)
+	if err != nil {
+		return nil, err
+	}
+
+	return &parsed, nil
+}
+
+func parseOptionalDateQuery(r *http.Request, names ...string) (string, error) {
+	value := firstQueryValue(r, names...)
+	if value == "" {
+		return "", nil
+	}
+
+	parsed, err := time.Parse("20060102", value)
+	if err != nil {
+		return "", err
+	}
+
+	return parsed.Format("2006-01-02"), nil
+}
+
+func parseOptionalDateToExclusiveQuery(r *http.Request, names ...string) (string, error) {
+	value := firstQueryValue(r, names...)
+	if value == "" {
+		return "", nil
+	}
+
+	parsed, err := time.Parse("20060102", value)
+	if err != nil {
+		return "", err
+	}
+
+	return parsed.AddDate(0, 0, 1).Format("2006-01-02"), nil
+}
+
+func firstQueryValue(r *http.Request, names ...string) string {
+	for _, name := range names {
+		value := strings.TrimSpace(r.URL.Query().Get(name))
+		if value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func isValidCategory(value string) bool {
+	switch value {
+	case "meetup", "concert", "exhibition", "party", "other":
+		return true
+	default:
+		return false
+	}
 }
 
 func decodeJSON(r *http.Request, dst any) error {
