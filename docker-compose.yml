@@ -155,7 +155,7 @@ services:
     image: mongo:8.0
     command: ["mongos", "--configdb", "cfgRS/configsvr1:27019,configsvr2:27019,configsvr3:27019", "--bind_ip_all", "--port", "27017"]
     ports:
-      - "${APP_BIND_IP}:${MONGODB_PORT}:27017"
+      - "${APP_BIND_IP}:${MONGODB_PORT}:${MONGODB_PORT}"
     depends_on:
       configsvr1:
         condition: service_healthy
