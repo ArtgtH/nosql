@@ -3,13 +3,13 @@ package main
 import (
 	"context"
 	"log"
+	"nosql/internal/config"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
 	"nosql/internal/app"
-	"nosql/internal/config"
 )
 
 func main() {

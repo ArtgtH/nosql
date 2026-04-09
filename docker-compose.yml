@@ -7,8 +7,10 @@ services:
       - "${APP_BIND_IP}:${APP_PORT}:${APP_PORT}"
     depends_on:
       redis:
-        condition: service_started
-      mongo-router-init:
+        condition: service_healthy
+      mongos:
+        condition: service_healthy
+      mongo-init:
         condition: service_completed_successfully
     restart: unless-stopped
 
@@ -16,203 +18,269 @@ services:
     image: redis:8.0
     env_file:
       - .env.local
-    restart: always
+    command:
+      - sh
+      - -c
+      - |
+        if [ -z "$$REDIS_PASSWORD" ]; then
+          exec redis-server --appendonly yes
+        else
+          exec redis-server --appendonly yes --requirepass "$$REDIS_PASSWORD"
+        fi
     ports:
-      - "${APP_BIND_IP}:${REDIS_PORT}:6379"
+      - "${APP_BIND_IP}:${REDIS_PORT}:${REDIS_PORT}"
+    restart: unless-stopped
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - |
+          if [ -z "$$REDIS_PASSWORD" ]; then
+            redis-cli ping | grep -q PONG
+          else
+            redis-cli -a "$$REDIS_PASSWORD" ping | grep -q PONG
+          fi
+      interval: 5s
+      timeout: 2s
+      retries: 20
 
-  mongo-cfg-1:
+  configsvr1:
     image: mongo:8.0
-    command:
-      [
-        "sh",
-        "-c",
-        "cp /etc/mongo-keyfile /tmp/mongo-keyfile && chmod 400 /tmp/mongo-keyfile && exec mongod --configsvr --replSet cfgRS --port 27119 --bind_ip_all --keyFile /tmp/mongo-keyfile"
-      ]
+    command: ["mongod", "--configsvr", "--replSet", "cfgRS", "--bind_ip_all", "--port", "27019"]
+    restart: unless-stopped
     volumes:
-      - mongo_cfg_1_data:/data/db
-      - ./mongo-scripts/mongo-keyfile:/etc/mongo-keyfile:ro
-    restart: always
+      - mongo-configsvr1:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--port", "27019", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 2s
+      retries: 20
 
-  mongo-cfg-2:
+  configsvr2:
     image: mongo:8.0
-    command:
-      [
-        "sh",
-        "-c",
-        "cp /etc/mongo-keyfile /tmp/mongo-keyfile && chmod 400 /tmp/mongo-keyfile && exec mongod --configsvr --replSet cfgRS --port 27120 --bind_ip_all --keyFile /tmp/mongo-keyfile"
-      ]
+    command: ["mongod", "--configsvr", "--replSet", "cfgRS", "--bind_ip_all", "--port", "27019"]
+    restart: unless-stopped
     volumes:
-      - mongo_cfg_2_data:/data/db
-      - ./mongo-scripts/mongo-keyfile:/etc/mongo-keyfile:ro
-    restart: always
+      - mongo-configsvr2:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--port", "27019", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 2s
+      retries: 20
 
-  mongo-cfg-3:
+  configsvr3:
     image: mongo:8.0
-    command:
-      [
-        "sh",
-        "-c",
-        "cp /etc/mongo-keyfile /tmp/mongo-keyfile && chmod 400 /tmp/mongo-keyfile && exec mongod --configsvr --replSet cfgRS --port 27121 --bind_ip_all --keyFile /tmp/mongo-keyfile"
-      ]
+    command: ["mongod", "--configsvr", "--replSet", "cfgRS", "--bind_ip_all", "--port", "27019"]
+    restart: unless-stopped
     volumes:
-      - mongo_cfg_3_data:/data/db
-      - ./mongo-scripts/mongo-keyfile:/etc/mongo-keyfile:ro
-    restart: always
+      - mongo-configsvr3:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--port", "27019", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 2s
+      retries: 20
 
-  mongo-shard1-a:
+  shard1-1:
     image: mongo:8.0
-    command:
-      [
-        "sh",
-        "-c",
-        "cp /etc/mongo-keyfile /tmp/mongo-keyfile && chmod 400 /tmp/mongo-keyfile && exec mongod --shardsvr --replSet shard1RS --port 27217 --bind_ip_all --keyFile /tmp/mongo-keyfile"
-      ]
+    command: ["mongod", "--shardsvr", "--replSet", "shard1RS", "--bind_ip_all", "--port", "27018"]
+    restart: unless-stopped
     volumes:
-      - mongo_shard1_a_data:/data/db
-      - ./mongo-scripts/mongo-keyfile:/etc/mongo-keyfile:ro
-    restart: always
+      - mongo-shard1-1:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--port", "27018", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 2s
+      retries: 20
 
-  mongo-shard1-b:
+  shard1-2:
     image: mongo:8.0
-    command:
-      [
-        "sh",
-        "-c",
-        "cp /etc/mongo-keyfile /tmp/mongo-keyfile && chmod 400 /tmp/mongo-keyfile && exec mongod --shardsvr --replSet shard1RS --port 27218 --bind_ip_all --keyFile /tmp/mongo-keyfile"
-      ]
+    command: ["mongod", "--shardsvr", "--replSet", "shard1RS", "--bind_ip_all", "--port", "27018"]
+    restart: unless-stopped
     volumes:
-      - mongo_shard1_b_data:/data/db
-      - ./mongo-scripts/mongo-keyfile:/etc/mongo-keyfile:ro
-    restart: always
+      - mongo-shard1-2:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--port", "27018", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 2s
+      retries: 20
 
-  mongo-shard1-c:
+  shard1-3:
     image: mongo:8.0
-    command:
-      [
-        "sh",
-        "-c",
-        "cp /etc/mongo-keyfile /tmp/mongo-keyfile && chmod 400 /tmp/mongo-keyfile && exec mongod --shardsvr --replSet shard1RS --port 27219 --bind_ip_all --keyFile /tmp/mongo-keyfile"
-      ]
+    command: ["mongod", "--shardsvr", "--replSet", "shard1RS", "--bind_ip_all", "--port", "27018"]
+    restart: unless-stopped
     volumes:
-      - mongo_shard1_c_data:/data/db
-      - ./mongo-scripts/mongo-keyfile:/etc/mongo-keyfile:ro
-    restart: always
+      - mongo-shard1-3:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--port", "27018", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 2s
+      retries: 20
 
-  mongo-shard2-a:
+  shard2-1:
     image: mongo:8.0
-    command:
-      [
-        "sh",
-        "-c",
-        "cp /etc/mongo-keyfile /tmp/mongo-keyfile && chmod 400 /tmp/mongo-keyfile && exec mongod --shardsvr --replSet shard2RS --port 27317 --bind_ip_all --keyFile /tmp/mongo-keyfile"
-      ]
+    command: ["mongod", "--shardsvr", "--replSet", "shard2RS", "--bind_ip_all", "--port", "27018"]
+    restart: unless-stopped
     volumes:
-      - mongo_shard2_a_data:/data/db
-      - ./mongo-scripts/mongo-keyfile:/etc/mongo-keyfile:ro
-    restart: always
+      - mongo-shard2-1:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--port", "27018", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 2s
+      retries: 20
 
-  mongo-shard2-b:
+  shard2-2:
     image: mongo:8.0
-    command:
-      [
-        "sh",
-        "-c",
-        "cp /etc/mongo-keyfile /tmp/mongo-keyfile && chmod 400 /tmp/mongo-keyfile && exec mongod --shardsvr --replSet shard2RS --port 27318 --bind_ip_all --keyFile /tmp/mongo-keyfile"
-      ]
+    command: ["mongod", "--shardsvr", "--replSet", "shard2RS", "--bind_ip_all", "--port", "27018"]
+    restart: unless-stopped
     volumes:
-      - mongo_shard2_b_data:/data/db
-      - ./mongo-scripts/mongo-keyfile:/etc/mongo-keyfile:ro
-    restart: always
+      - mongo-shard2-2:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--port", "27018", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 2s
+      retries: 20
 
-  mongo-shard2-c:
+  shard2-3:
     image: mongo:8.0
-    command:
-      [
-        "sh",
-        "-c",
-        "cp /etc/mongo-keyfile /tmp/mongo-keyfile && chmod 400 /tmp/mongo-keyfile && exec mongod --shardsvr --replSet shard2RS --port 27319 --bind_ip_all --keyFile /tmp/mongo-keyfile"
-      ]
+    command: ["mongod", "--shardsvr", "--replSet", "shard2RS", "--bind_ip_all", "--port", "27018"]
+    restart: unless-stopped
     volumes:
-      - mongo_shard2_c_data:/data/db
-      - ./mongo-scripts/mongo-keyfile:/etc/mongo-keyfile:ro
-    restart: always
+      - mongo-shard2-3:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--port", "27018", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 2s
+      retries: 20
 
-  mongo-cfg-rs-init:
+  mongos:
     image: mongo:8.0
-    network_mode: "service:mongo-cfg-1"
-    depends_on:
-      - mongo-cfg-1
-      - mongo-cfg-2
-      - mongo-cfg-3
-    entrypoint: ["sh", "/scripts/mongo-rs-init.sh", "cfg"]
-    volumes:
-      - ./mongo-scripts/mongo-rs-init.sh:/scripts/mongo-rs-init.sh:ro
-    restart: "no"
-
-  mongo-shard1-rs-init:
-    image: mongo:8.0
-    network_mode: "service:mongo-shard1-a"
-    depends_on:
-      - mongo-shard1-a
-      - mongo-shard1-b
-      - mongo-shard1-c
-    entrypoint: ["sh", "/scripts/mongo-rs-init.sh", "shard1"]
-    volumes:
-      - ./mongo-scripts/mongo-rs-init.sh:/scripts/mongo-rs-init.sh:ro
-    restart: "no"
-
-  mongo-shard2-rs-init:
-    image: mongo:8.0
-    network_mode: "service:mongo-shard2-a"
-    depends_on:
-      - mongo-shard2-a
-      - mongo-shard2-b
-      - mongo-shard2-c
-    entrypoint: ["sh", "/scripts/mongo-rs-init.sh", "shard2"]
-    volumes:
-      - ./mongo-scripts/mongo-rs-init.sh:/scripts/mongo-rs-init.sh:ro
-    restart: "no"
-
-  mongo:
-    image: mongo:8.0
-    command:
-      [
-        "sh",
-        "-c",
-        "cp /etc/mongo-keyfile /tmp/mongo-keyfile && chmod 400 /tmp/mongo-keyfile && exec mongos --configdb cfgRS/mongo-cfg-1:27119,mongo-cfg-2:27120,mongo-cfg-3:27121 --bind_ip_all --port 27017 --keyFile /tmp/mongo-keyfile"
-      ]
-    depends_on:
-      mongo-cfg-rs-init:
-        condition: service_completed_successfully
-      mongo-shard1-rs-init:
-        condition: service_completed_successfully
-      mongo-shard2-rs-init:
-        condition: service_completed_successfully
-    volumes:
-      - ./mongo-scripts/mongo-keyfile:/etc/mongo-keyfile:ro
-    restart: always
+    command: ["mongos", "--configdb", "cfgRS/configsvr1:27019,configsvr2:27019,configsvr3:27019", "--bind_ip_all", "--port", "27017"]
     ports:
       - "${APP_BIND_IP}:${MONGODB_PORT}:27017"
+    depends_on:
+      configsvr1:
+        condition: service_healthy
+      configsvr2:
+        condition: service_healthy
+      configsvr3:
+        condition: service_healthy
+      shard1-1:
+        condition: service_healthy
+      shard1-2:
+        condition: service_healthy
+      shard1-3:
+        condition: service_healthy
+      shard2-1:
+        condition: service_healthy
+      shard2-2:
+        condition: service_healthy
+      shard2-3:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mongosh", "--port", "27017", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 2s
+      retries: 20
 
-  mongo-router-init:
+  mongo-init:
     image: mongo:8.0
     env_file:
       - .env.local
-    network_mode: "service:mongo"
     depends_on:
-      - mongo
-    entrypoint: ["sh", "/scripts/mongo-init.sh"]
-    volumes:
-      - ./mongo-scripts/mongo-init.sh:/scripts/mongo-init.sh:ro
+      configsvr1:
+        condition: service_healthy
+      configsvr2:
+        condition: service_healthy
+      configsvr3:
+        condition: service_healthy
+      shard1-1:
+        condition: service_healthy
+      shard1-2:
+        condition: service_healthy
+      shard1-3:
+        condition: service_healthy
+      shard2-1:
+        condition: service_healthy
+      shard2-2:
+        condition: service_healthy
+      shard2-3:
+        condition: service_healthy
+      mongos:
+        condition: service_started
     restart: "no"
+    command:
+      - sh
+      - -c
+      - |
+        set -eu
+
+        wait_mongo() {
+          host="$$1"
+          port="$$2"
+          echo "Waiting for $${host}:$${port}..."
+          until mongosh --host "$${host}" --port "$${port}" --quiet --eval 'db.adminCommand({ ping: 1 }).ok' >/dev/null 2>&1; do
+            sleep 2
+          done
+        }
+
+        init_rs() {
+          host="$$1"
+          port="$$2"
+          replset="$$3"
+          members_json="$$4"
+
+          mongosh --host "$${host}" --port "$${port}" --quiet --eval "
+            try {
+              rs.status().ok;
+              print('Replica set $${replset} already initialized');
+            } catch (e) {
+              print('Initializing replica set $${replset}');
+              rs.initiate({
+                _id: '$${replset}',
+                members: $${members_json}
+              });
+            }
+          "
+
+          until mongosh --host "$${host}" --port "$${port}" --quiet --eval "db.hello().isWritablePrimary || db.hello().secondary" | grep -q 'true'; do
+            sleep 2
+          done
+        }
+
+        wait_mongo configsvr1 27019
+        wait_mongo configsvr2 27019
+        wait_mongo configsvr3 27019
+
+        wait_mongo shard1-1 27018
+        wait_mongo shard1-2 27018
+        wait_mongo shard1-3 27018
+
+        wait_mongo shard2-1 27018
+        wait_mongo shard2-2 27018
+        wait_mongo shard2-3 27018
+
+        init_rs configsvr1 27019 cfgRS "[{ _id: 0, host: 'configsvr1:27019' }, { _id: 1, host: 'configsvr2:27019' }, { _id: 2, host: 'configsvr3:27019' }]"
+        init_rs shard1-1 27018 shard1RS "[{ _id: 0, host: 'shard1-1:27018' }, { _id: 1, host: 'shard1-2:27018' }, { _id: 2, host: 'shard1-3:27018' }]"
+        init_rs shard2-1 27018 shard2RS "[{ _id: 0, host: 'shard2-1:27018' }, { _id: 1, host: 'shard2-2:27018' }, { _id: 2, host: 'shard2-3:27018' }]"
+
+        wait_mongo mongos 27017
+
+        mongosh --host mongos --port 27017 --quiet --eval "
+          try { sh.addShard('shard1RS/shard1-1:27018,shard1-2:27018,shard1-3:27018'); } catch (e) { print(e); }
+          try { sh.addShard('shard2RS/shard2-1:27018,shard2-2:27018,shard2-3:27018'); } catch (e) { print(e); }
+          try { sh.enableSharding('$${MONGODB_DATABASE}'); } catch (e) { print(e); }
+          try { sh.shardCollection('$${MONGODB_DATABASE}.events', { created_by: 'hashed' }); } catch (e) { print(e); }
+        "
+
+        echo 'Mongo cluster initialized successfully'
 
 volumes:
-  mongo_cfg_1_data:
-  mongo_cfg_2_data:
-  mongo_cfg_3_data:
-  mongo_shard1_a_data:
-  mongo_shard1_b_data:
-  mongo_shard1_c_data:
-  mongo_shard2_a_data:
-  mongo_shard2_b_data:
-  mongo_shard2_c_data:
+  mongo-configsvr1:
+  mongo-configsvr2:
+  mongo-configsvr3:
+  mongo-shard1-1:
+  mongo-shard1-2:
+  mongo-shard1-3:
+  mongo-shard2-1:
+  mongo-shard2-2:
+  mongo-shard2-3:

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	stdhttp "net/http"
+	"nosql/internal/config"
 	"time"
 
 	api "nosql/internal/api"
@@ -14,7 +15,6 @@ import (
 	healthHTTP "nosql/internal/api/health"
 	sessionHTTP "nosql/internal/api/session"
 	usersHTTP "nosql/internal/api/users"
-	"nosql/internal/config"
 	mongoInfra "nosql/internal/infrastructure/mongo"
 	redisInfra "nosql/internal/infrastructure/redis"
 	authService "nosql/internal/service/auth"

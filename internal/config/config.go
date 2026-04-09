@@ -90,17 +90,14 @@ func Load() (Config, error) {
 	if mongoDatabase == "" {
 		return Config{}, fmt.Errorf("MONGODB_DATABASE is required")
 	}
-	if mongoUser == "" {
-		return Config{}, fmt.Errorf("MONGODB_USER is required")
-	}
-	if mongoPassword == "" {
-		return Config{}, fmt.Errorf("MONGODB_PASSWORD is required")
-	}
 	if mongoHost == "" {
 		return Config{}, fmt.Errorf("MONGODB_HOST is required")
 	}
 	if mongoPortStr == "" {
 		return Config{}, fmt.Errorf("MONGODB_PORT is required")
+	}
+	if (mongoUser == "") != (mongoPassword == "") {
+		return Config{}, fmt.Errorf("MONGODB_USER and MONGODB_PASSWORD must be set together")
 	}
 
 	mongoPort, err := strconv.Atoi(mongoPortStr)
