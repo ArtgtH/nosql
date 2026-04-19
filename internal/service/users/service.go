@@ -17,15 +17,24 @@ var (
 )
 
 type User struct {
-	ID           primitive.ObjectID `bson:"_id,omitempty"`
-	FullName     string             `bson:"full_name"`
-	Username     string             `bson:"username"`
-	PasswordHash string             `bson:"password_hash"`
+	ID           primitive.ObjectID `bson:"_id,omitempty" json:"id"`
+	FullName     string             `bson:"full_name" json:"full_name"`
+	Username     string             `bson:"username" json:"username"`
+	PasswordHash string             `bson:"password_hash" json:"-"`
+}
+
+type ListFilter struct {
+	ID     string
+	Name   string
+	Limit  uint64
+	Offset uint64
 }
 
 type Repository interface {
 	Create(ctx context.Context, user User) (string, error)
 	FindByUsername(ctx context.Context, username string) (User, bool, error)
+	FindByID(ctx context.Context, id string) (User, bool, error)
+	List(ctx context.Context, filter ListFilter) ([]User, error)
 }
 
 type Service struct {
@@ -61,4 +70,26 @@ func (s *Service) Create(ctx context.Context, fullName, username, password strin
 		Username:     username,
 		PasswordHash: string(hash),
 	})
+}
+
+func (s *Service) FindByUsername(ctx context.Context, username string) (User, bool, error) {
+	username = strings.TrimSpace(username)
+	if username == "" {
+		return User{}, false, nil
+	}
+	return s.repo.FindByUsername(ctx, username)
+}
+
+func (s *Service) GetByID(ctx context.Context, id string) (User, bool, error) {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return User{}, false, nil
+	}
+	return s.repo.FindByID(ctx, id)
+}
+
+func (s *Service) List(ctx context.Context, filter ListFilter) ([]User, error) {
+	filter.ID = strings.TrimSpace(filter.ID)
+	filter.Name = strings.TrimSpace(filter.Name)
+	return s.repo.List(ctx, filter)
 }

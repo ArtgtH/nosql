@@ -83,7 +83,6 @@ func Load() (Config, error) {
 	mongoPortStr := os.Getenv("MONGODB_PORT")
 
 	mongoAnySet := mongoDatabase != "" || mongoUser != "" || mongoPassword != "" || mongoHost != "" || mongoPortStr != ""
-
 	if !mongoAnySet {
 		return cfg, nil
 	}
@@ -91,17 +90,14 @@ func Load() (Config, error) {
 	if mongoDatabase == "" {
 		return Config{}, fmt.Errorf("MONGODB_DATABASE is required")
 	}
-	if mongoUser == "" {
-		return Config{}, fmt.Errorf("MONGODB_USER is required")
-	}
-	if mongoPassword == "" {
-		return Config{}, fmt.Errorf("MONGODB_PASSWORD is required")
-	}
 	if mongoHost == "" {
 		return Config{}, fmt.Errorf("MONGODB_HOST is required")
 	}
 	if mongoPortStr == "" {
 		return Config{}, fmt.Errorf("MONGODB_PORT is required")
+	}
+	if (mongoUser == "") != (mongoPassword == "") {
+		return Config{}, fmt.Errorf("MONGODB_USER and MONGODB_PASSWORD must be set together")
 	}
 
 	mongoPort, err := strconv.Atoi(mongoPortStr)
@@ -148,6 +144,7 @@ func getPortEnv(envName string) (int, error) {
 	if err != nil || port <= 1000 || port > 65535 {
 		return 0, fmt.Errorf("invalid %s=%q", envName, value)
 	}
+
 	return port, nil
 }
 
@@ -161,5 +158,6 @@ func getPositiveIntEnv(envName string) (int, error) {
 	if err != nil || number < 0 {
 		return 0, fmt.Errorf("invalid %s=%q", envName, value)
 	}
+
 	return number, nil
 }

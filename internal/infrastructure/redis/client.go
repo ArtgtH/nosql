@@ -2,9 +2,7 @@ package redis
 
 import (
 	"fmt"
-
 	goredis "github.com/redis/go-redis/v9"
-
 	"nosql/internal/config"
 )
 
