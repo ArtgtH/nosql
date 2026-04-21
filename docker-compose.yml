@@ -12,7 +12,7 @@ services:
         condition: service_healthy
       mongo-init:
         condition: service_completed_successfully
-      cassandra:
+      cassandra-test:
         condition: service_healthy
     restart: unless-stopped
 
