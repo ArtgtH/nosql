@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log"
 	stdhttp "net/http"
-	"nosql/internal/config"
 	"time"
 
 	api "nosql/internal/api"
@@ -15,21 +14,26 @@ import (
 	healthHTTP "nosql/internal/api/health"
 	sessionHTTP "nosql/internal/api/session"
 	usersHTTP "nosql/internal/api/users"
+	"nosql/internal/config"
+	cassandraInfra "nosql/internal/infrastructure/cassandra"
 	mongoInfra "nosql/internal/infrastructure/mongo"
 	redisInfra "nosql/internal/infrastructure/redis"
 	authService "nosql/internal/service/auth"
 	eventsService "nosql/internal/service/events"
+	reactionsService "nosql/internal/service/reactions"
 	sessionService "nosql/internal/service/session"
 	usersService "nosql/internal/service/users"
 
+	gocql "github.com/apache/cassandra-gocql-driver/v2"
 	goredis "github.com/redis/go-redis/v9"
 	gomongo "go.mongodb.org/mongo-driver/mongo"
 )
 
 type App struct {
-	server *stdhttp.Server
-	redis  *goredis.Client
-	mongo  *gomongo.Client
+	server    *stdhttp.Server
+	redis     *goredis.Client
+	mongo     *gomongo.Client
+	cassandra *gocql.Session
 }
 
 func NewApp(cfg config.Config) (*App, error) {
@@ -41,6 +45,7 @@ func NewApp(cfg config.Config) (*App, error) {
 	sessionHandler := sessionHTTP.NewHandler(sessionSvc, cfg.UserSessionTTL)
 
 	var mongoClient *gomongo.Client
+	var cassandraSession *gocql.Session
 	var userHandler *usersHTTP.Handler
 	var authHandler *authHTTP.Handler
 	var eventHandler *eventsHTTP.Handler
@@ -65,9 +70,23 @@ func NewApp(cfg config.Config) (*App, error) {
 		authSvc := authService.NewService(userRepo)
 		eventSvc := eventsService.NewService(eventRepo)
 
-		userHandler = usersHTTP.NewHandler(userSvc, eventSvc, sessionSvc, cfg.UserSessionTTL)
+		var reactionsSvc *reactionsService.Service
+		if cfg.Cassandra.Enabled {
+			cassandraSession, err = cassandraInfra.NewSession(ctx, cfg)
+			if err != nil {
+				_ = mongoClient.Disconnect(ctx)
+				_ = redisClient.Close()
+				return nil, err
+			}
+
+			reactionRepo := cassandraInfra.NewReactionRepository(cassandraSession)
+			reactionCache := redisInfra.NewReactionCache(redisClient)
+			reactionsSvc = reactionsService.NewService(reactionRepo, reactionCache, eventSvc, cfg.LikeTTL)
+		}
+
+		userHandler = usersHTTP.NewHandler(userSvc, eventSvc, reactionsSvc, sessionSvc, cfg.UserSessionTTL)
 		authHandler = authHTTP.NewHandler(authSvc, sessionSvc, cfg.UserSessionTTL)
-		eventHandler = eventsHTTP.NewHandler(eventSvc, userSvc, sessionSvc, cfg.UserSessionTTL)
+		eventHandler = eventsHTTP.NewHandler(eventSvc, reactionsSvc, userSvc, sessionSvc, cfg.UserSessionTTL)
 
 		go func() {
 			indexCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -88,8 +107,9 @@ func NewApp(cfg config.Config) (*App, error) {
 	)
 
 	return &App{
-		redis: redisClient,
-		mongo: mongoClient,
+		redis:     redisClient,
+		mongo:     mongoClient,
+		cassandra: cassandraSession,
 		server: &stdhttp.Server{
 			Addr:              fmt.Sprintf(":%d", cfg.Port),
 			Handler:           router,
@@ -112,6 +132,10 @@ func (a *App) Run() error {
 
 func (a *App) Shutdown(ctx context.Context) error {
 	serverErr := a.server.Shutdown(ctx)
+
+	if a.cassandra != nil {
+		a.cassandra.Close()
+	}
 
 	var mongoErr error
 	if a.mongo != nil {

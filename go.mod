@@ -3,6 +3,7 @@ module nosql
 go 1.26
 
 require (
+	github.com/apache/cassandra-gocql-driver/v2 v2.1.0
 	github.com/go-chi/chi/v5 v5.2.5
 	github.com/go-chi/render v1.0.3
 	github.com/joho/godotenv v1.5.1
