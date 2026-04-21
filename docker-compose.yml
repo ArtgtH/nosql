@@ -45,7 +45,7 @@ services:
       timeout: 2s
       retries: 20
 
-  cassandra:
+  cassandra-test:
     image: cassandra:5.0
     env_file:
       - .env.local
@@ -59,7 +59,7 @@ services:
     healthcheck:
       test:
         - CMD-SHELL
-        - cqlsh 127.0.0.1 ${CASSANDRA_PORT} -e "DESCRIBE KEYSPACES" >/dev/null 2>&1
+        - cqlsh ${APP_BIND_IP} ${CASSANDRA_PORT} -e "DESCRIBE KEYSPACES" >/dev/null 2>&1
       interval: 10s
       timeout: 5s
       retries: 20
