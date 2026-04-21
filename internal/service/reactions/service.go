@@ -146,8 +146,6 @@ func (s *Service) GetByTitles(ctx context.Context, titles []string) (map[string]
 
 		result[title] = counts
 
-		// В Redis пишем только если для title действительно есть события,
-		// из которых мы могли получить данные из Cassandra.
 		if s.cache != nil && len(eventIDs) > 0 {
 			if err := s.cache.SetByTitle(ctx, title, counts, s.ttl); err != nil {
 				return nil, err
@@ -173,6 +171,10 @@ func (s *Service) setReaction(ctx context.Context, eventID, userID string, likeV
 
 	if s.cache != nil {
 		_ = s.cache.DeleteByTitle(ctx, event.Title)
+
+		if _, err := s.GetByTitle(ctx, event.Title); err != nil {
+			return err
+		}
 	}
 
 	return nil
