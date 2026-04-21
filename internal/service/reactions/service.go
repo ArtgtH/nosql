@@ -69,6 +69,7 @@ func (s *Service) GetByTitle(ctx context.Context, title string) (Counts, error) 
 func (s *Service) GetByTitles(ctx context.Context, titles []string) (map[string]Counts, error) {
 	cleaned := make([]string, 0, len(titles))
 	seen := make(map[string]struct{}, len(titles))
+
 	for _, title := range titles {
 		title = strings.TrimSpace(title)
 		if title == "" {
@@ -77,6 +78,7 @@ func (s *Service) GetByTitles(ctx context.Context, titles []string) (map[string]
 		if _, ok := seen[title]; ok {
 			continue
 		}
+
 		seen[title] = struct{}{}
 		cleaned = append(cleaned, title)
 	}
@@ -87,6 +89,7 @@ func (s *Service) GetByTitles(ctx context.Context, titles []string) (map[string]
 	}
 
 	missingTitles := make([]string, 0, len(cleaned))
+
 	for _, title := range cleaned {
 		if s.cache == nil {
 			missingTitles = append(missingTitles, title)
@@ -116,11 +119,13 @@ func (s *Service) GetByTitles(ctx context.Context, titles []string) (map[string]
 
 	eventIDsByTitle := make(map[string][]string, len(missingTitles))
 	allEventIDs := make([]string, 0, len(events))
+
 	for _, event := range events {
 		title := strings.TrimSpace(event.Title)
 		if title == "" || event.ID.IsZero() {
 			continue
 		}
+
 		eventID := event.ID.Hex()
 		eventIDsByTitle[title] = append(eventIDsByTitle[title], eventID)
 		allEventIDs = append(allEventIDs, eventID)

@@ -23,16 +23,15 @@ func NewSession(ctx context.Context, cfg config.Config) (*gocql.Session, error) 
 	if err != nil {
 		return nil, err
 	}
+	defer adminSession.Close()
 
 	keyspaceQuery := fmt.Sprintf(
 		"CREATE KEYSPACE IF NOT EXISTS %s WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1}",
 		cfg.Cassandra.Keyspace,
 	)
 	if err := adminSession.Query(keyspaceQuery).WithContext(ctx).Exec(); err != nil {
-		adminSession.Close()
 		return nil, err
 	}
-	adminSession.Close()
 
 	cluster, err := newClusterConfig(cfg.Cassandra, cfg.Cassandra.Keyspace)
 	if err != nil {
@@ -44,18 +43,37 @@ func NewSession(ctx context.Context, cfg config.Config) (*gocql.Session, error) 
 		return nil, err
 	}
 
-	tableQuery := fmt.Sprintf(`
-		CREATE TABLE IF NOT EXISTS %s.%s (
-			event_id text,
-			created_by text,
-			like_value tinyint,
-			created_at timestamp,
-			PRIMARY KEY ((event_id), created_by)
-		)
-	`, cfg.Cassandra.Keyspace, eventReactionsTable)
-	if err := session.Query(tableQuery).WithContext(ctx).Exec(); err != nil {
-		session.Close()
-		return nil, err
+	queries := []string{
+		fmt.Sprintf(`
+CREATE TABLE IF NOT EXISTS %s.%s (
+	event_id text,
+	created_by text,
+	like_value tinyint,
+	created_at timestamp,
+	PRIMARY KEY ((event_id), created_by)
+)`,
+			cfg.Cassandra.Keyspace,
+			eventReactionsTable,
+		),
+		fmt.Sprintf(
+			"CREATE INDEX IF NOT EXISTS %s_like_value_idx ON %s.%s (like_value)",
+			eventReactionsTable,
+			cfg.Cassandra.Keyspace,
+			eventReactionsTable,
+		),
+		fmt.Sprintf(
+			"CREATE INDEX IF NOT EXISTS %s_created_by_idx ON %s.%s (created_by)",
+			eventReactionsTable,
+			cfg.Cassandra.Keyspace,
+			eventReactionsTable,
+		),
+	}
+
+	for _, query := range queries {
+		if err := session.Query(query).WithContext(ctx).Exec(); err != nil {
+			session.Close()
+			return nil, err
+		}
 	}
 
 	return session, nil
@@ -70,9 +88,11 @@ func newClusterConfig(cfg config.CassandraConfig, keyspace string) (*gocql.Clust
 	cluster.NumConns = 1
 	cluster.ProtoVersion = 4
 	cluster.DisableInitialHostLookup = true
+
 	if keyspace != "" {
 		cluster.Keyspace = keyspace
 	}
+
 	if cfg.Username != "" {
 		cluster.Authenticator = gocql.PasswordAuthenticator{
 			Username: cfg.Username,

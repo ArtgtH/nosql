@@ -33,29 +33,24 @@ func (c *ReactionCache) GetByTitle(ctx context.Context, title string) (reactions
 		return reactionsService.Counts{}, false, err
 	}
 
-	if len(values) != 2 || (values[0] == nil && values[1] == nil) {
+	if len(values) != 2 || values[0] == nil || values[1] == nil {
 		return reactionsService.Counts{}, false, nil
 	}
 
-	counts := reactionsService.Counts{}
-
-	if values[0] != nil {
-		likes, err := strconv.Atoi(fmt.Sprint(values[0]))
-		if err != nil {
-			return reactionsService.Counts{}, false, err
-		}
-		counts.Likes = likes
+	likes, err := strconv.Atoi(fmt.Sprint(values[0]))
+	if err != nil {
+		return reactionsService.Counts{}, false, err
 	}
 
-	if values[1] != nil {
-		dislikes, err := strconv.Atoi(fmt.Sprint(values[1]))
-		if err != nil {
-			return reactionsService.Counts{}, false, err
-		}
-		counts.Dislikes = dislikes
+	dislikes, err := strconv.Atoi(fmt.Sprint(values[1]))
+	if err != nil {
+		return reactionsService.Counts{}, false, err
 	}
 
-	return counts, true, nil
+	return reactionsService.Counts{
+		Likes:    likes,
+		Dislikes: dislikes,
+	}, true, nil
 }
 
 func (c *ReactionCache) SetByTitle(ctx context.Context, title string, counts reactionsService.Counts, ttl time.Duration) error {
