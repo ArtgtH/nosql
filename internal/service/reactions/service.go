@@ -136,14 +136,19 @@ func (s *Service) GetByTitles(ctx context.Context, titles []string) (map[string]
 
 	for _, title := range missingTitles {
 		counts := Counts{}
-		for _, eventID := range eventIDsByTitle[title] {
+		eventIDs := eventIDsByTitle[title]
+
+		for _, eventID := range eventIDs {
 			eventCounts := countsByEventID[eventID]
 			counts.Likes += eventCounts.Likes
 			counts.Dislikes += eventCounts.Dislikes
 		}
 
 		result[title] = counts
-		if s.cache != nil {
+
+		// В Redis пишем только если для title действительно есть события,
+		// из которых мы могли получить данные из Cassandra.
+		if s.cache != nil && len(eventIDs) > 0 {
 			if err := s.cache.SetByTitle(ctx, title, counts, s.ttl); err != nil {
 				return nil, err
 			}

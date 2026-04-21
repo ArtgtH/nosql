@@ -19,7 +19,7 @@ func NewReactionRepository(session *gocql.Session) *ReactionRepository {
 }
 
 func (r *ReactionRepository) Upsert(ctx context.Context, eventID, userID string, likeValue bool, createdAt time.Time) error {
-	value := int8(0)
+	value := int8(-1)
 	if likeValue {
 		value = 1
 	}
