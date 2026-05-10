@@ -14,6 +14,7 @@ import (
 	sessionHTTP "nosql/internal/api/session"
 	eventsService "nosql/internal/service/events"
 	reactionsService "nosql/internal/service/reactions"
+	reviewsService "nosql/internal/service/reviews"
 	sessionService "nosql/internal/service/session"
 	usersService "nosql/internal/service/users"
 	"nosql/internal/transport"
@@ -23,6 +24,7 @@ type Handler struct {
 	users     *usersService.Service
 	events    *eventsService.Service
 	reactions *reactionsService.Service
+	reviews   *reviewsService.Service
 	sessions  *sessionService.Service
 	ttl       time.Duration
 }
@@ -31,6 +33,7 @@ func NewHandler(
 	users *usersService.Service,
 	events *eventsService.Service,
 	reactions *reactionsService.Service,
+	reviews *reviewsService.Service,
 	sessions *sessionService.Service,
 	ttl time.Duration,
 ) *Handler {
@@ -38,6 +41,7 @@ func NewHandler(
 		users:     users,
 		events:    events,
 		reactions: reactions,
+		reviews:   reviews,
 		sessions:  sessions,
 		ttl:       ttl,
 	}
@@ -70,18 +74,24 @@ type reactionsResponse struct {
 	Dislikes int `json:"dislikes"`
 }
 
+type reviewsSummaryResponse struct {
+	Count  int     `json:"count"`
+	Rating float64 `json:"rating"`
+}
+
 type eventResponse struct {
-	ID          string             `json:"id"`
-	Title       string             `json:"title"`
-	Category    string             `json:"category"`
-	Price       uint64             `json:"price"`
-	Description string             `json:"description"`
-	Location    locationResponse   `json:"location"`
-	CreatedAt   string             `json:"created_at"`
-	CreatedBy   string             `json:"created_by"`
-	StartedAt   string             `json:"started_at"`
-	FinishedAt  string             `json:"finished_at"`
-	Reactions   *reactionsResponse `json:"reactions,omitempty"`
+	ID          string                  `json:"id"`
+	Title       string                  `json:"title"`
+	Category    string                  `json:"category"`
+	Price       uint64                  `json:"price"`
+	Description string                  `json:"description"`
+	Location    locationResponse        `json:"location"`
+	CreatedAt   string                  `json:"created_at"`
+	CreatedBy   string                  `json:"created_by"`
+	StartedAt   string                  `json:"started_at"`
+	FinishedAt  string                  `json:"finished_at"`
+	Reactions   *reactionsResponse      `json:"reactions,omitempty"`
+	Reviews     *reviewsSummaryResponse `json:"reviews,omitempty"`
 }
 
 type listEventsResponse struct {
@@ -194,6 +204,7 @@ func (h *Handler) GetByID(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) ListEvents(w http.ResponseWriter, r *http.Request) {
 	sid := sessionHTTP.ReadSID(r)
 	includeReactions := includesReactions(r)
+	includeReviews := includesReviews(r)
 
 	user, found, err := h.users.GetByID(r.Context(), chi.URLParam(r, "id"))
 	if err != nil {
@@ -294,10 +305,22 @@ func (h *Handler) ListEvents(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	reviewsByTitle := map[string]reviewsService.Counts{}
+	if includeReviews && h.reviews != nil {
+		titles := make([]string, 0, len(events))
+		for _, event := range events {
+			titles = append(titles, event.Title)
+		}
+		reviewsByTitle, err = h.reviews.GetByTitles(r.Context(), titles)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+	}
 
 	response := listEventsResponse{Events: make([]eventResponse, 0, len(events)), Count: len(events)}
 	for _, event := range events {
-		response.Events = append(response.Events, toEventResponse(event, includeReactions, reactionsByTitle[event.Title]))
+		response.Events = append(response.Events, toEventResponse(event, includeReactions, reactionsByTitle[event.Title], includeReviews, reviewsByTitle[event.Title]))
 	}
 
 	h.refreshExistingSession(r, w, sid)
@@ -315,7 +338,7 @@ func toUserResponse(user usersService.User) userResponse {
 	return userResponse{ID: user.ID.Hex(), FullName: user.FullName, Username: user.Username}
 }
 
-func toEventResponse(event eventsService.Event, includeReactions bool, counts reactionsService.Counts) eventResponse {
+func toEventResponse(event eventsService.Event, includeReactions bool, counts reactionsService.Counts, includeReviews bool, reviewCounts reviewsService.Counts) eventResponse {
 	response := eventResponse{
 		ID:          event.ID.Hex(),
 		Title:       event.Title,
@@ -334,12 +357,24 @@ func toEventResponse(event eventsService.Event, includeReactions bool, counts re
 	if includeReactions {
 		response.Reactions = &reactionsResponse{Likes: counts.Likes, Dislikes: counts.Dislikes}
 	}
+	if includeReviews {
+		response.Reviews = &reviewsSummaryResponse{Count: reviewCounts.Count, Rating: reviewCounts.Rating}
+	}
 	return response
 }
 
 func includesReactions(r *http.Request) bool {
 	for _, part := range strings.Split(r.URL.Query().Get("include"), ",") {
 		if strings.TrimSpace(part) == "reactions" {
+			return true
+		}
+	}
+	return false
+}
+
+func includesReviews(r *http.Request) bool {
+	for _, part := range strings.Split(r.URL.Query().Get("include"), ",") {
+		if strings.TrimSpace(part) == "reviews" {
 			return true
 		}
 	}

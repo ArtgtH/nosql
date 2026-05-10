@@ -11,7 +11,10 @@ import (
 	gocql "github.com/apache/cassandra-gocql-driver/v2"
 )
 
-const eventReactionsTable = "event_reactions"
+const (
+	eventReactionsTable = "event_reactions"
+	eventReviewsTable   = "event_reviews"
+)
 
 func NewSession(ctx context.Context, cfg config.Config) (*gocql.Session, error) {
 	adminCluster, err := newClusterConfig(cfg.Cassandra, "")
@@ -55,6 +58,20 @@ CREATE TABLE IF NOT EXISTS %s.%s (
 			cfg.Cassandra.Keyspace,
 			eventReactionsTable,
 		),
+		fmt.Sprintf(`
+CREATE TABLE IF NOT EXISTS %s.%s (
+	event_id text,
+	created_by text,
+	id text,
+	rating tinyint,
+	comment text,
+	created_at timestamp,
+	updated_at timestamp,
+	PRIMARY KEY ((event_id), created_by)
+)`,
+			cfg.Cassandra.Keyspace,
+			eventReviewsTable,
+		),
 		fmt.Sprintf(
 			"CREATE INDEX IF NOT EXISTS %s_like_value_idx ON %s.%s (like_value)",
 			eventReactionsTable,
@@ -66,6 +83,18 @@ CREATE TABLE IF NOT EXISTS %s.%s (
 			eventReactionsTable,
 			cfg.Cassandra.Keyspace,
 			eventReactionsTable,
+		),
+		fmt.Sprintf(
+			"CREATE INDEX IF NOT EXISTS %s_id_idx ON %s.%s (id)",
+			eventReviewsTable,
+			cfg.Cassandra.Keyspace,
+			eventReviewsTable,
+		),
+		fmt.Sprintf(
+			"CREATE INDEX IF NOT EXISTS %s_created_by_idx ON %s.%s (created_by)",
+			eventReviewsTable,
+			cfg.Cassandra.Keyspace,
+			eventReviewsTable,
 		),
 	}
 
