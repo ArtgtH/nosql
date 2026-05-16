@@ -10,6 +10,8 @@ import (
 	gocql "github.com/apache/cassandra-gocql-driver/v2"
 )
 
+const eventReactionsTable = "event_reactions"
+
 type ReactionRepository struct {
 	session *gocql.Session
 }

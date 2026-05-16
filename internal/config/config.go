@@ -161,7 +161,7 @@ func Load() (Config, error) {
 			return Config{}, fmt.Errorf("invalid CASSANDRA_PORT=%q", cassandraPortStr)
 		}
 
-		hosts := splitCSV(cassandraHostsRaw)
+		hosts := splitWithTrim(cassandraHostsRaw, ",")
 		if len(hosts) == 0 {
 			return Config{}, fmt.Errorf("CASSANDRA_HOSTS is required")
 		}
@@ -192,8 +192,8 @@ func firstNonEmpty(values ...string) string {
 	return ""
 }
 
-func splitCSV(value string) []string {
-	parts := strings.Split(value, ",")
+func splitWithTrim(value, separator string) []string {
+	parts := strings.Split(value, separator)
 	result := make([]string, 0, len(parts))
 	for _, part := range parts {
 		trimmed := strings.TrimSpace(part)

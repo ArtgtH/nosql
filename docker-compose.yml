@@ -14,6 +14,8 @@ services:
         condition: service_completed_successfully
       cassandra-test:
         condition: service_healthy
+      cassandra-init:
+        condition: service_completed_successfully
     restart: unless-stopped
 
   redis:
@@ -63,6 +65,18 @@ services:
       interval: 10s
       timeout: 5s
       retries: 20
+
+  cassandra-init:
+    image: cassandra:5.0
+    env_file:
+      - .env.local
+    depends_on:
+      cassandra-test:
+        condition: service_healthy
+    volumes:
+      - ./scripts/cassandra-init.sh:/scripts/cassandra-init.sh:ro
+    entrypoint: ["/bin/sh", "/scripts/cassandra-init.sh"]
+    restart: "no"
 
   configsvr1:
     image: mongo:8.0
