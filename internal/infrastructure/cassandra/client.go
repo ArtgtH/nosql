@@ -2,7 +2,6 @@ package cassandra
 
 import (
 	"context"
-	"fmt"
 	"strings"
 	"time"
 
@@ -11,29 +10,7 @@ import (
 	gocql "github.com/apache/cassandra-gocql-driver/v2"
 )
 
-const eventReactionsTable = "event_reactions"
-
 func NewSession(ctx context.Context, cfg config.Config) (*gocql.Session, error) {
-	adminCluster, err := newClusterConfig(cfg.Cassandra, "")
-	if err != nil {
-		return nil, err
-	}
-
-	adminSession, err := adminCluster.CreateSession()
-	if err != nil {
-		return nil, err
-	}
-
-	keyspaceQuery := fmt.Sprintf(
-		"CREATE KEYSPACE IF NOT EXISTS %s WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1}",
-		cfg.Cassandra.Keyspace,
-	)
-	if err := adminSession.Query(keyspaceQuery).WithContext(ctx).Exec(); err != nil {
-		adminSession.Close()
-		return nil, err
-	}
-	adminSession.Close()
-
 	cluster, err := newClusterConfig(cfg.Cassandra, cfg.Cassandra.Keyspace)
 	if err != nil {
 		return nil, err
@@ -44,16 +21,7 @@ func NewSession(ctx context.Context, cfg config.Config) (*gocql.Session, error) 
 		return nil, err
 	}
 
-	tableQuery := fmt.Sprintf(`
-		CREATE TABLE IF NOT EXISTS %s.%s (
-			event_id text,
-			created_by text,
-			like_value tinyint,
-			created_at timestamp,
-			PRIMARY KEY ((event_id), created_by)
-		)
-	`, cfg.Cassandra.Keyspace, eventReactionsTable)
-	if err := session.Query(tableQuery).WithContext(ctx).Exec(); err != nil {
+	if err := session.Query("SELECT release_version FROM system.local").WithContext(ctx).Exec(); err != nil {
 		session.Close()
 		return nil, err
 	}
@@ -70,9 +38,11 @@ func newClusterConfig(cfg config.CassandraConfig, keyspace string) (*gocql.Clust
 	cluster.NumConns = 1
 	cluster.ProtoVersion = 4
 	cluster.DisableInitialHostLookup = true
+
 	if keyspace != "" {
 		cluster.Keyspace = keyspace
 	}
+
 	if cfg.Username != "" {
 		cluster.Authenticator = gocql.PasswordAuthenticator{
 			Username: cfg.Username,

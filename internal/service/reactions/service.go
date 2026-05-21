@@ -69,6 +69,7 @@ func (s *Service) GetByTitle(ctx context.Context, title string) (Counts, error) 
 func (s *Service) GetByTitles(ctx context.Context, titles []string) (map[string]Counts, error) {
 	cleaned := make([]string, 0, len(titles))
 	seen := make(map[string]struct{}, len(titles))
+
 	for _, title := range titles {
 		title = strings.TrimSpace(title)
 		if title == "" {
@@ -77,6 +78,7 @@ func (s *Service) GetByTitles(ctx context.Context, titles []string) (map[string]
 		if _, ok := seen[title]; ok {
 			continue
 		}
+
 		seen[title] = struct{}{}
 		cleaned = append(cleaned, title)
 	}
@@ -87,6 +89,7 @@ func (s *Service) GetByTitles(ctx context.Context, titles []string) (map[string]
 	}
 
 	missingTitles := make([]string, 0, len(cleaned))
+
 	for _, title := range cleaned {
 		if s.cache == nil {
 			missingTitles = append(missingTitles, title)
@@ -116,11 +119,13 @@ func (s *Service) GetByTitles(ctx context.Context, titles []string) (map[string]
 
 	eventIDsByTitle := make(map[string][]string, len(missingTitles))
 	allEventIDs := make([]string, 0, len(events))
+
 	for _, event := range events {
 		title := strings.TrimSpace(event.Title)
 		if title == "" || event.ID.IsZero() {
 			continue
 		}
+
 		eventID := event.ID.Hex()
 		eventIDsByTitle[title] = append(eventIDsByTitle[title], eventID)
 		allEventIDs = append(allEventIDs, eventID)
@@ -136,14 +141,17 @@ func (s *Service) GetByTitles(ctx context.Context, titles []string) (map[string]
 
 	for _, title := range missingTitles {
 		counts := Counts{}
-		for _, eventID := range eventIDsByTitle[title] {
+		eventIDs := eventIDsByTitle[title]
+
+		for _, eventID := range eventIDs {
 			eventCounts := countsByEventID[eventID]
 			counts.Likes += eventCounts.Likes
 			counts.Dislikes += eventCounts.Dislikes
 		}
 
 		result[title] = counts
-		if s.cache != nil {
+
+		if s.cache != nil && len(eventIDs) > 0 {
 			if err := s.cache.SetByTitle(ctx, title, counts, s.ttl); err != nil {
 				return nil, err
 			}
@@ -168,6 +176,10 @@ func (s *Service) setReaction(ctx context.Context, eventID, userID string, likeV
 
 	if s.cache != nil {
 		_ = s.cache.DeleteByTitle(ctx, event.Title)
+
+		if _, err := s.GetByTitle(ctx, event.Title); err != nil {
+			return err
+		}
 	}
 
 	return nil

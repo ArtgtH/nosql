@@ -4,14 +4,19 @@ import (
 	"context"
 	"crypto/md5"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
 	goredis "github.com/redis/go-redis/v9"
 
 	reactionsService "nosql/internal/service/reactions"
+)
+
+const (
+	reactionFieldLikes    = "likes"
+	reactionFieldDislikes = "dislikes"
 )
 
 type ReactionCache struct {
@@ -23,29 +28,43 @@ func NewReactionCache(client *goredis.Client) *ReactionCache {
 }
 
 func (c *ReactionCache) GetByTitle(ctx context.Context, title string) (reactionsService.Counts, bool, error) {
-	value, err := c.client.Get(ctx, c.key(title)).Result()
+	values, err := c.client.HMGet(ctx, c.key(title), reactionFieldLikes, reactionFieldDislikes).Result()
 	if err != nil {
-		if err == goredis.Nil {
-			return reactionsService.Counts{}, false, nil
-		}
 		return reactionsService.Counts{}, false, err
 	}
 
-	var counts reactionsService.Counts
-	if err := json.Unmarshal([]byte(value), &counts); err != nil {
+	if len(values) != 2 || values[0] == nil || values[1] == nil {
+		return reactionsService.Counts{}, false, nil
+	}
+
+	likes, err := strconv.Atoi(fmt.Sprint(values[0]))
+	if err != nil {
 		return reactionsService.Counts{}, false, err
 	}
 
-	return counts, true, nil
+	dislikes, err := strconv.Atoi(fmt.Sprint(values[1]))
+	if err != nil {
+		return reactionsService.Counts{}, false, err
+	}
+
+	return reactionsService.Counts{
+		Likes:    likes,
+		Dislikes: dislikes,
+	}, true, nil
 }
 
 func (c *ReactionCache) SetByTitle(ctx context.Context, title string, counts reactionsService.Counts, ttl time.Duration) error {
-	payload, err := json.Marshal(counts)
-	if err != nil {
-		return err
-	}
+	key := c.key(title)
 
-	return c.client.Set(ctx, c.key(title), payload, ttl).Err()
+	pipe := c.client.TxPipeline()
+	pipe.HSet(ctx, key,
+		reactionFieldLikes, counts.Likes,
+		reactionFieldDislikes, counts.Dislikes,
+	)
+	pipe.Expire(ctx, key, ttl)
+
+	_, err := pipe.Exec(ctx)
+	return err
 }
 
 func (c *ReactionCache) DeleteByTitle(ctx context.Context, title string) error {
@@ -54,5 +73,5 @@ func (c *ReactionCache) DeleteByTitle(ctx context.Context, title string) error {
 
 func (c *ReactionCache) key(title string) string {
 	sum := md5.Sum([]byte(strings.TrimSpace(title)))
-	return fmt.Sprintf("events:%s:reactions", hex.EncodeToString(sum[:]))
+	return fmt.Sprintf("event:%s:reactions", hex.EncodeToString(sum[:]))
 }
