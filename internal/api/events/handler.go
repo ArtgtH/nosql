@@ -13,29 +13,33 @@ import (
 
 	sessionHTTP "nosql/internal/api/session"
 	eventsService "nosql/internal/service/events"
+	reactionsService "nosql/internal/service/reactions"
 	sessionService "nosql/internal/service/session"
 	usersService "nosql/internal/service/users"
 	"nosql/internal/transport"
 )
 
 type Handler struct {
-	events   *eventsService.Service
-	users    *usersService.Service
-	sessions *sessionService.Service
-	ttl      time.Duration
+	events    *eventsService.Service
+	reactions *reactionsService.Service
+	users     *usersService.Service
+	sessions  *sessionService.Service
+	ttl       time.Duration
 }
 
 func NewHandler(
 	events *eventsService.Service,
+	reactions *reactionsService.Service,
 	users *usersService.Service,
 	sessions *sessionService.Service,
 	ttl time.Duration,
 ) *Handler {
 	return &Handler{
-		events:   events,
-		users:    users,
-		sessions: sessions,
-		ttl:      ttl,
+		events:    events,
+		reactions: reactions,
+		users:     users,
+		sessions:  sessions,
+		ttl:       ttl,
 	}
 }
 
@@ -56,22 +60,32 @@ type locationResponse struct {
 	City    string `json:"city,omitempty"`
 }
 
+type reactionsResponse struct {
+	Likes    int `json:"likes"`
+	Dislikes int `json:"dislikes"`
+}
+
 type eventResponse struct {
-	ID          string           `json:"id"`
-	Title       string           `json:"title"`
-	Category    string           `json:"category"`
-	Price       uint64           `json:"price"`
-	Description string           `json:"description"`
-	Location    locationResponse `json:"location"`
-	CreatedAt   string           `json:"created_at"`
-	CreatedBy   string           `json:"created_by"`
-	StartedAt   string           `json:"started_at"`
-	FinishedAt  string           `json:"finished_at"`
+	ID          string             `json:"id"`
+	Title       string             `json:"title"`
+	Category    string             `json:"category"`
+	Price       uint64             `json:"price"`
+	Description string             `json:"description"`
+	Location    locationResponse   `json:"location"`
+	CreatedAt   string             `json:"created_at"`
+	CreatedBy   string             `json:"created_by"`
+	StartedAt   string             `json:"started_at"`
+	FinishedAt  string             `json:"finished_at"`
+	Reactions   *reactionsResponse `json:"reactions,omitempty"`
 }
 
 type listEventsResponse struct {
 	Events []eventResponse `json:"events"`
 	Count  int             `json:"count"`
+}
+
+func (h *Handler) HasReactions() bool {
+	return h.reactions != nil
 }
 
 func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
@@ -128,6 +142,7 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	sid := sessionHTTP.ReadSID(r)
+	includeReactions := includesReactions(r)
 
 	limit, err := parseUintQuery(r, "limit")
 	if err != nil {
@@ -205,22 +220,14 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 		}
 		if !found {
 			h.refreshExistingSession(r, w, sid)
-			transport.JSON(w, r, http.StatusOK, listEventsResponse{
-				Events: []eventResponse{},
-				Count:  0,
-			})
+			transport.JSON(w, r, http.StatusOK, listEventsResponse{Events: []eventResponse{}, Count: 0})
 			return
 		}
-
 		if createdBy != "" && createdBy != user.ID.Hex() {
 			h.refreshExistingSession(r, w, sid)
-			transport.JSON(w, r, http.StatusOK, listEventsResponse{
-				Events: []eventResponse{},
-				Count:  0,
-			})
+			transport.JSON(w, r, http.StatusOK, listEventsResponse{Events: []eventResponse{}, Count: 0})
 			return
 		}
-
 		createdBy = user.ID.Hex()
 	}
 
@@ -242,12 +249,15 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response := listEventsResponse{
-		Events: make([]eventResponse, 0, len(events)),
-		Count:  len(events),
+	reactionsByTitle, err := h.resolveReactionsByTitle(r, events, includeReactions)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
 	}
+
+	response := listEventsResponse{Events: make([]eventResponse, 0, len(events)), Count: len(events)}
 	for _, event := range events {
-		response.Events = append(response.Events, toEventResponse(event))
+		response.Events = append(response.Events, toEventResponse(event, includeReactions, reactionsByTitle[event.Title]))
 	}
 
 	h.refreshExistingSession(r, w, sid)
@@ -256,6 +266,7 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) GetByID(w http.ResponseWriter, r *http.Request) {
 	sid := sessionHTTP.ReadSID(r)
+	includeReactions := includesReactions(r)
 
 	event, found, err := h.events.GetByID(r.Context(), chi.URLParam(r, "id"))
 	if err != nil {
@@ -268,8 +279,17 @@ func (h *Handler) GetByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	counts := reactionsService.Counts{}
+	if includeReactions && h.reactions != nil {
+		counts, err = h.reactions.GetByTitle(r.Context(), event.Title)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+	}
+
 	h.refreshExistingSession(r, w, sid)
-	transport.JSON(w, r, http.StatusOK, toEventResponse(event))
+	transport.JSON(w, r, http.StatusOK, toEventResponse(event, includeReactions, counts))
 }
 
 func (h *Handler) Patch(w http.ResponseWriter, r *http.Request) {
@@ -315,6 +335,70 @@ func (h *Handler) Patch(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func (h *Handler) Like(w http.ResponseWriter, r *http.Request) {
+	h.react(w, r, true)
+}
+
+func (h *Handler) Dislike(w http.ResponseWriter, r *http.Request) {
+	h.react(w, r, false)
+}
+
+func (h *Handler) react(w http.ResponseWriter, r *http.Request, like bool) {
+	sid := sessionHTTP.ReadSID(r)
+
+	session, found, err := h.sessions.Get(r.Context(), sid)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	if !found || session.UserID == "" {
+		h.refreshExistingSession(r, w, sid)
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+	if h.reactions == nil {
+		h.refreshExistingSession(r, w, sid)
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+
+	eventID := chi.URLParam(r, "id")
+	if like {
+		err = h.reactions.Like(r.Context(), eventID, session.UserID)
+	} else {
+		err = h.reactions.Dislike(r.Context(), eventID, session.UserID)
+	}
+	if err != nil {
+		h.refreshExistingSession(r, w, sid)
+		if errors.Is(err, reactionsService.ErrEventNotFound) {
+			transport.Message(w, r, http.StatusNotFound, err.Error())
+			return
+		}
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	h.refreshExistingSession(r, w, sid)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handler) resolveReactionsByTitle(r *http.Request, events []eventsService.Event, includeReactions bool) (map[string]reactionsService.Counts, error) {
+	result := make(map[string]reactionsService.Counts, len(events))
+	if !includeReactions {
+		return result, nil
+	}
+	if h.reactions == nil {
+		return result, nil
+	}
+
+	titles := make([]string, 0, len(events))
+	for _, event := range events {
+		titles = append(titles, event.Title)
+	}
+
+	return h.reactions.GetByTitles(r.Context(), titles)
+}
+
 func (h *Handler) refreshExistingSession(r *http.Request, w http.ResponseWriter, sid string) {
 	_, found, err := h.sessions.RefreshIfExists(r.Context(), sid)
 	if err == nil && found {
@@ -322,8 +406,8 @@ func (h *Handler) refreshExistingSession(r *http.Request, w http.ResponseWriter,
 	}
 }
 
-func toEventResponse(event eventsService.Event) eventResponse {
-	return eventResponse{
+func toEventResponse(event eventsService.Event, includeReactions bool, counts reactionsService.Counts) eventResponse {
+	response := eventResponse{
 		ID:          event.ID.Hex(),
 		Title:       event.Title,
 		Category:    eventsService.NormalizeCategory(event.Category),
@@ -338,6 +422,19 @@ func toEventResponse(event eventsService.Event) eventResponse {
 		StartedAt:  event.StartedAt,
 		FinishedAt: event.FinishedAt,
 	}
+	if includeReactions {
+		response.Reactions = &reactionsResponse{Likes: counts.Likes, Dislikes: counts.Dislikes}
+	}
+	return response
+}
+
+func includesReactions(r *http.Request) bool {
+	for _, part := range strings.Split(r.URL.Query().Get("include"), ",") {
+		if strings.TrimSpace(part) == "reactions" {
+			return true
+		}
+	}
+	return false
 }
 
 func decodeJSONStrict(r *http.Request, dst any) error {
@@ -377,6 +474,14 @@ func decodePatchRequest(r *http.Request) (eventsService.EventPatch, error) {
 			return eventsService.EventPatch{}, eventsService.ErrInvalidCity
 		}
 		patch.City = &city
+	}
+
+	for key := range raw {
+		switch key {
+		case "category", "price", "city":
+		default:
+			return eventsService.EventPatch{}, errors.New("unknown field")
+		}
 	}
 
 	return patch, nil

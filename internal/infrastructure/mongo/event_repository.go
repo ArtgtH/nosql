@@ -186,3 +186,24 @@ func (r *EventRepository) List(ctx context.Context, filter eventsService.ListFil
 
 	return events, nil
 }
+
+func (r *EventRepository) ListByTitles(ctx context.Context, titles []string) ([]eventsService.Event, error) {
+	if len(titles) == 0 {
+		return []eventsService.Event{}, nil
+	}
+
+	cursor, err := r.col.Find(ctx, bson.M{
+		"title": bson.M{"$in": titles},
+	})
+	if err != nil {
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+
+	var events []eventsService.Event
+	if err := cursor.All(ctx, &events); err != nil {
+		return nil, err
+	}
+
+	return events, nil
+}

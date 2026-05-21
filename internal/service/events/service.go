@@ -75,6 +75,7 @@ type Repository interface {
 	GetByID(ctx context.Context, id string) (Event, bool, error)
 	UpdateByOrganizer(ctx context.Context, eventID, organizerID string, patch EventPatch) (bool, error)
 	List(ctx context.Context, filter ListFilter) ([]Event, error)
+	ListByTitles(ctx context.Context, titles []string) ([]Event, error)
 }
 
 type Service struct {
@@ -200,6 +201,36 @@ func (s *Service) List(ctx context.Context, filter ListFilter) ([]Event, error) 
 	filter.CreatedBy = strings.TrimSpace(filter.CreatedBy)
 
 	events, err := s.repo.List(ctx, filter)
+	if err != nil {
+		return nil, err
+	}
+
+	for i := range events {
+		events[i].Category = NormalizeCategory(events[i].Category)
+	}
+
+	return events, nil
+}
+
+func (s *Service) ListByTitles(ctx context.Context, titles []string) ([]Event, error) {
+	cleaned := make([]string, 0, len(titles))
+	seen := make(map[string]struct{}, len(titles))
+	for _, title := range titles {
+		title = strings.TrimSpace(title)
+		if title == "" {
+			continue
+		}
+		if _, ok := seen[title]; ok {
+			continue
+		}
+		seen[title] = struct{}{}
+		cleaned = append(cleaned, title)
+	}
+	if len(cleaned) == 0 {
+		return []Event{}, nil
+	}
+
+	events, err := s.repo.ListByTitles(ctx, cleaned)
 	if err != nil {
 		return nil, err
 	}

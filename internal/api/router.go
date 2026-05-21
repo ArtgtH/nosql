@@ -48,6 +48,10 @@ func NewRouter(
 		r.Get("/events", eventHandler.List)
 		r.Get("/events/{id}", eventHandler.GetByID)
 		r.Patch("/events/{id}", eventHandler.Patch)
+		if eventHandler.HasReactions() {
+			r.Post("/events/{id}/like", eventHandler.Like)
+			r.Post("/events/{id}/dislike", eventHandler.Dislike)
+		}
 	}
 
 	return r
