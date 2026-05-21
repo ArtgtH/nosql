@@ -2,7 +2,6 @@ package cassandra
 
 import (
 	"context"
-	"fmt"
 	"strings"
 	"time"
 
@@ -11,31 +10,7 @@ import (
 	gocql "github.com/apache/cassandra-gocql-driver/v2"
 )
 
-const (
-	eventReactionsTable = "event_reactions"
-	eventReviewsTable   = "event_reviews"
-)
-
 func NewSession(ctx context.Context, cfg config.Config) (*gocql.Session, error) {
-	adminCluster, err := newClusterConfig(cfg.Cassandra, "")
-	if err != nil {
-		return nil, err
-	}
-
-	adminSession, err := adminCluster.CreateSession()
-	if err != nil {
-		return nil, err
-	}
-	defer adminSession.Close()
-
-	keyspaceQuery := fmt.Sprintf(
-		"CREATE KEYSPACE IF NOT EXISTS %s WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1}",
-		cfg.Cassandra.Keyspace,
-	)
-	if err := adminSession.Query(keyspaceQuery).WithContext(ctx).Exec(); err != nil {
-		return nil, err
-	}
-
 	cluster, err := newClusterConfig(cfg.Cassandra, cfg.Cassandra.Keyspace)
 	if err != nil {
 		return nil, err
@@ -46,63 +21,9 @@ func NewSession(ctx context.Context, cfg config.Config) (*gocql.Session, error) 
 		return nil, err
 	}
 
-	queries := []string{
-		fmt.Sprintf(`
-CREATE TABLE IF NOT EXISTS %s.%s (
-	event_id text,
-	created_by text,
-	like_value tinyint,
-	created_at timestamp,
-	PRIMARY KEY ((event_id), created_by)
-)`,
-			cfg.Cassandra.Keyspace,
-			eventReactionsTable,
-		),
-		fmt.Sprintf(`
-CREATE TABLE IF NOT EXISTS %s.%s (
-	event_id text,
-	created_by text,
-	id text,
-	rating tinyint,
-	comment text,
-	created_at timestamp,
-	updated_at timestamp,
-	PRIMARY KEY ((event_id), created_by)
-)`,
-			cfg.Cassandra.Keyspace,
-			eventReviewsTable,
-		),
-		fmt.Sprintf(
-			"CREATE INDEX IF NOT EXISTS %s_like_value_idx ON %s.%s (like_value)",
-			eventReactionsTable,
-			cfg.Cassandra.Keyspace,
-			eventReactionsTable,
-		),
-		fmt.Sprintf(
-			"CREATE INDEX IF NOT EXISTS %s_created_by_idx ON %s.%s (created_by)",
-			eventReactionsTable,
-			cfg.Cassandra.Keyspace,
-			eventReactionsTable,
-		),
-		fmt.Sprintf(
-			"CREATE INDEX IF NOT EXISTS %s_id_idx ON %s.%s (id)",
-			eventReviewsTable,
-			cfg.Cassandra.Keyspace,
-			eventReviewsTable,
-		),
-		fmt.Sprintf(
-			"CREATE INDEX IF NOT EXISTS %s_created_by_idx ON %s.%s (created_by)",
-			eventReviewsTable,
-			cfg.Cassandra.Keyspace,
-			eventReviewsTable,
-		),
-	}
-
-	for _, query := range queries {
-		if err := session.Query(query).WithContext(ctx).Exec(); err != nil {
-			session.Close()
-			return nil, err
-		}
+	if err := session.Query("SELECT release_version FROM system.local").WithContext(ctx).Exec(); err != nil {
+		session.Close()
+		return nil, err
 	}
 
 	return session, nil
