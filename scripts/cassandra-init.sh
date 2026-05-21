@@ -36,6 +36,17 @@ CREATE TABLE IF NOT EXISTS $keyspace.event_reactions (
   PRIMARY KEY ((event_id), created_by)
 );
 
+CREATE TABLE IF NOT EXISTS $keyspace.event_reviews (
+  event_id text,
+  created_by text,
+  id uuid,
+  rating tinyint,
+  comment text,
+  created_at timestamp,
+  updated_at timestamp,
+  PRIMARY KEY ((event_id), created_by)
+);
+
 CREATE INDEX IF NOT EXISTS event_reactions_like_value_idx
 ON $keyspace.event_reactions (like_value);
 

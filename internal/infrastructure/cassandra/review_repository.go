@@ -3,7 +3,6 @@ package cassandra
 import (
 	"context"
 	"fmt"
-	"sort"
 	"time"
 
 	reviewsService "nosql/internal/service/reviews"
@@ -99,10 +98,6 @@ func (r *ReviewRepository) ListByEventID(ctx context.Context, eventID string, li
 	if err != nil {
 		return nil, err
 	}
-
-	sort.SliceStable(reviews, func(i, j int) bool {
-		return reviews[i].CreatedAt.After(reviews[j].CreatedAt)
-	})
 
 	if offset >= uint64(len(reviews)) {
 		return []reviewsService.Review{}, nil
