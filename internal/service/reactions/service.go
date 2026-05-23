@@ -32,20 +32,29 @@ type EventRepository interface {
 	ListByTitles(ctx context.Context, titles []string) ([]eventsService.Event, error)
 }
 
+type Graph interface {
+	LikeEvent(ctx context.Context, userID, eventID, title string) error
+}
+
 type Service struct {
 	repo   Repository
 	cache  Cache
 	events EventRepository
+	graph  Graph
 	ttl    time.Duration
 }
 
-func NewService(repo Repository, cache Cache, events EventRepository, ttl time.Duration) *Service {
-	return &Service{
+func NewService(repo Repository, cache Cache, events EventRepository, ttl time.Duration, graph ...Graph) *Service {
+	service := &Service{
 		repo:   repo,
 		cache:  cache,
 		events: events,
 		ttl:    ttl,
 	}
+	if len(graph) > 0 {
+		service.graph = graph[0]
+	}
+	return service
 }
 
 func (s *Service) Like(ctx context.Context, eventID, userID string) error {
@@ -172,6 +181,12 @@ func (s *Service) setReaction(ctx context.Context, eventID, userID string, likeV
 
 	if err := s.repo.Upsert(ctx, event.ID.Hex(), strings.TrimSpace(userID), likeValue, time.Now().UTC()); err != nil {
 		return err
+	}
+
+	if likeValue && s.graph != nil {
+		if err := s.graph.LikeEvent(ctx, strings.TrimSpace(userID), event.ID.Hex(), event.Title); err != nil {
+			return err
+		}
 	}
 
 	if s.cache != nil {

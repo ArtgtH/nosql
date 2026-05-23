@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := run
 
-COMPOSE = docker compose --env-file .env.local
+COMPOSE := docker compose --env-file .env.local
 
 .PHONY: run
 run:
@@ -9,10 +9,6 @@ run:
 .PHONY: rund
 rund:
 	$(COMPOSE) up --build
-
-.PHONY: services
-services:
-	$(COMPOSE) ps
 
 .PHONY: stop
 stop:
@@ -25,3 +21,15 @@ clean:
 .PHONY: logs
 logs:
 	$(COMPOSE) logs -f
+
+.PHONY: ps
+ps:
+	$(COMPOSE) ps
+
+.PHONY: test
+test:
+	go test ./...
+
+.PHONY: compose-config
+compose-config:
+	$(COMPOSE) config

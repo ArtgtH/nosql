@@ -16,6 +16,10 @@ services:
         condition: service_healthy
       cassandra-init:
         condition: service_completed_successfully
+      neo4j:
+        condition: service_healthy
+      neo4j-init:
+        condition: service_completed_successfully
     restart: unless-stopped
 
   redis:
@@ -76,6 +80,38 @@ services:
     volumes:
       - ./scripts/cassandra-init.sh:/scripts/cassandra-init.sh:ro
     entrypoint: ["/bin/sh", "/scripts/cassandra-init.sh"]
+    restart: "no"
+
+  neo4j:
+    image: neo4j:5.26
+    environment:
+      NEO4J_AUTH: "${NEO4J_USERNAME}/${NEO4J_PASSWORD}"
+      NEO4J_server_http_listen__address: "0.0.0.0:${NEO4J_HTTP_PORT}"
+      NEO4J_server_bolt_listen__address: "0.0.0.0:${NEO4J_BOLT_PORT}"
+    ports:
+      - "${APP_BIND_IP}:${NEO4J_HTTP_PORT}:${NEO4J_HTTP_PORT}"
+      - "${APP_BIND_IP}:${NEO4J_BOLT_PORT}:${NEO4J_BOLT_PORT}"
+    volumes:
+      - neo4j-data:/data
+    restart: unless-stopped
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - cypher-shell -a "bolt://localhost:${NEO4J_BOLT_PORT}" -u "${NEO4J_USERNAME}" -p "${NEO4J_PASSWORD}" "RETURN 1" >/dev/null 2>&1
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  neo4j-init:
+    image: neo4j:5.26
+    env_file:
+      - .env.local
+    depends_on:
+      neo4j:
+        condition: service_healthy
+    volumes:
+      - ./scripts/neo4j-init.sh:/scripts/neo4j-init.sh:ro
+    entrypoint: ["/bin/sh", "/scripts/neo4j-init.sh"]
     restart: "no"
 
   configsvr1:
@@ -348,3 +384,4 @@ volumes:
   mongo-shard2-2:
   mongo-shard2-3:
   cassandra-data:
+  neo4j-data:

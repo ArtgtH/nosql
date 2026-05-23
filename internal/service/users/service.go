@@ -37,12 +37,21 @@ type Repository interface {
 	List(ctx context.Context, filter ListFilter) ([]User, error)
 }
 
-type Service struct {
-	repo Repository
+type Graph interface {
+	CreateUser(ctx context.Context, id string) error
 }
 
-func NewService(repo Repository) *Service {
-	return &Service{repo: repo}
+type Service struct {
+	repo  Repository
+	graph Graph
+}
+
+func NewService(repo Repository, graph ...Graph) *Service {
+	service := &Service{repo: repo}
+	if len(graph) > 0 {
+		service.graph = graph[0]
+	}
+	return service
 }
 
 func (s *Service) Create(ctx context.Context, fullName, username, password string) (string, error) {
@@ -65,11 +74,20 @@ func (s *Service) Create(ctx context.Context, fullName, username, password strin
 		return "", err
 	}
 
-	return s.repo.Create(ctx, User{
+	id, err := s.repo.Create(ctx, User{
 		FullName:     fullName,
 		Username:     username,
 		PasswordHash: string(hash),
 	})
+	if err != nil {
+		return "", err
+	}
+	if s.graph != nil {
+		if err := s.graph.CreateUser(ctx, id); err != nil {
+			return "", err
+		}
+	}
+	return id, nil
 }
 
 func (s *Service) FindByUsername(ctx context.Context, username string) (User, bool, error) {

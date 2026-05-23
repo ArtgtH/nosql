@@ -207,3 +207,36 @@ func (r *EventRepository) ListByTitles(ctx context.Context, titles []string) ([]
 
 	return events, nil
 }
+
+func (r *EventRepository) ListByIDs(ctx context.Context, ids []string) ([]eventsService.Event, error) {
+	if len(ids) == 0 {
+		return []eventsService.Event{}, nil
+	}
+
+	objectIDs := make([]primitive.ObjectID, 0, len(ids))
+	for _, id := range ids {
+		objectID, err := primitive.ObjectIDFromHex(id)
+		if err != nil {
+			continue
+		}
+		objectIDs = append(objectIDs, objectID)
+	}
+	if len(objectIDs) == 0 {
+		return []eventsService.Event{}, nil
+	}
+
+	cursor, err := r.col.Find(ctx, bson.M{
+		"_id": bson.M{"$in": objectIDs},
+	})
+	if err != nil {
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+
+	var events []eventsService.Event
+	if err := cursor.All(ctx, &events); err != nil {
+		return nil, err
+	}
+
+	return events, nil
+}
