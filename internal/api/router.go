@@ -52,6 +52,11 @@ func NewRouter(
 			r.Post("/events/{id}/like", eventHandler.Like)
 			r.Post("/events/{id}/dislike", eventHandler.Dislike)
 		}
+		if eventHandler.HasReviews() {
+			r.Post("/events/{id}/reviews", eventHandler.CreateReview)
+			r.Get("/events/{id}/reviews", eventHandler.ListReviews)
+			r.Patch("/events/{id}/reviews/{review_id}", eventHandler.UpdateReview)
+		}
 	}
 
 	return r

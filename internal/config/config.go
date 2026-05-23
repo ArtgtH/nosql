@@ -37,12 +37,13 @@ type CassandraConfig struct {
 }
 
 type Config struct {
-	Port           int
-	UserSessionTTL time.Duration
-	LikeTTL        time.Duration
-	Redis          RedisConfig
-	Mongo          MongoConfig
-	Cassandra      CassandraConfig
+	Port            int
+	UserSessionTTL  time.Duration
+	LikeTTL         time.Duration
+	EventReviewsTTL time.Duration
+	Redis           RedisConfig
+	Mongo           MongoConfig
+	Cassandra       CassandraConfig
 }
 
 func Load() (Config, error) {
@@ -59,6 +60,11 @@ func Load() (Config, error) {
 	}
 
 	likeTTLSeconds, err := getPositiveIntEnvOrDefault("APP_LIKE_TTL", 60)
+	if err != nil {
+		return Config{}, err
+	}
+
+	eventReviewsTTLSeconds, err := getPositiveIntEnvOrDefault("APP_EVENT_REVIEWS_TTL", 120)
 	if err != nil {
 		return Config{}, err
 	}
@@ -84,9 +90,10 @@ func Load() (Config, error) {
 	}
 
 	cfg := Config{
-		Port:           port,
-		UserSessionTTL: time.Duration(ttlSeconds) * time.Second,
-		LikeTTL:        time.Duration(likeTTLSeconds) * time.Second,
+		Port:            port,
+		UserSessionTTL:  time.Duration(ttlSeconds) * time.Second,
+		LikeTTL:         time.Duration(likeTTLSeconds) * time.Second,
+		EventReviewsTTL: time.Duration(eventReviewsTTLSeconds) * time.Second,
 		Redis: RedisConfig{
 			Host:     redisHost,
 			Port:     redisPort,

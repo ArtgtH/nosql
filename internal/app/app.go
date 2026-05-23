@@ -21,6 +21,7 @@ import (
 	authService "nosql/internal/service/auth"
 	eventsService "nosql/internal/service/events"
 	reactionsService "nosql/internal/service/reactions"
+	reviewsService "nosql/internal/service/reviews"
 	sessionService "nosql/internal/service/session"
 	usersService "nosql/internal/service/users"
 
@@ -71,6 +72,7 @@ func NewApp(cfg config.Config) (*App, error) {
 		eventSvc := eventsService.NewService(eventRepo)
 
 		var reactionsSvc *reactionsService.Service
+		var reviewsSvc *reviewsService.Service
 		if cfg.Cassandra.Enabled {
 			cassandraSession, err = cassandraInfra.NewSession(ctx, cfg)
 			if err != nil {
@@ -82,11 +84,15 @@ func NewApp(cfg config.Config) (*App, error) {
 			reactionRepo := cassandraInfra.NewReactionRepository(cassandraSession)
 			reactionCache := redisInfra.NewReactionCache(redisClient)
 			reactionsSvc = reactionsService.NewService(reactionRepo, reactionCache, eventSvc, cfg.LikeTTL)
+
+			reviewRepo := cassandraInfra.NewReviewRepository(cassandraSession)
+			reviewCache := redisInfra.NewReviewCache(redisClient)
+			reviewsSvc = reviewsService.NewService(reviewRepo, reviewCache, eventSvc, cfg.EventReviewsTTL)
 		}
 
-		userHandler = usersHTTP.NewHandler(userSvc, eventSvc, reactionsSvc, sessionSvc, cfg.UserSessionTTL)
+		userHandler = usersHTTP.NewHandler(userSvc, eventSvc, reactionsSvc, reviewsSvc, sessionSvc, cfg.UserSessionTTL)
 		authHandler = authHTTP.NewHandler(authSvc, sessionSvc, cfg.UserSessionTTL)
-		eventHandler = eventsHTTP.NewHandler(eventSvc, reactionsSvc, userSvc, sessionSvc, cfg.UserSessionTTL)
+		eventHandler = eventsHTTP.NewHandler(eventSvc, reactionsSvc, reviewsSvc, userSvc, sessionSvc, cfg.UserSessionTTL)
 
 		go func() {
 			indexCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
