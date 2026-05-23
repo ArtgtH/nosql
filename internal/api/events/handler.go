@@ -14,6 +14,7 @@ import (
 	sessionHTTP "nosql/internal/api/session"
 	eventsService "nosql/internal/service/events"
 	reactionsService "nosql/internal/service/reactions"
+	reviewsService "nosql/internal/service/reviews"
 	sessionService "nosql/internal/service/session"
 	usersService "nosql/internal/service/users"
 	"nosql/internal/transport"
@@ -22,6 +23,7 @@ import (
 type Handler struct {
 	events    *eventsService.Service
 	reactions *reactionsService.Service
+	reviews   *reviewsService.Service
 	users     *usersService.Service
 	sessions  *sessionService.Service
 	ttl       time.Duration
@@ -30,6 +32,7 @@ type Handler struct {
 func NewHandler(
 	events *eventsService.Service,
 	reactions *reactionsService.Service,
+	reviews *reviewsService.Service,
 	users *usersService.Service,
 	sessions *sessionService.Service,
 	ttl time.Duration,
@@ -37,6 +40,7 @@ func NewHandler(
 	return &Handler{
 		events:    events,
 		reactions: reactions,
+		reviews:   reviews,
 		users:     users,
 		sessions:  sessions,
 		ttl:       ttl,
@@ -65,18 +69,24 @@ type reactionsResponse struct {
 	Dislikes int `json:"dislikes"`
 }
 
+type reviewsSummaryResponse struct {
+	Count  int     `json:"count"`
+	Rating float64 `json:"rating"`
+}
+
 type eventResponse struct {
-	ID          string             `json:"id"`
-	Title       string             `json:"title"`
-	Category    string             `json:"category"`
-	Price       uint64             `json:"price"`
-	Description string             `json:"description"`
-	Location    locationResponse   `json:"location"`
-	CreatedAt   string             `json:"created_at"`
-	CreatedBy   string             `json:"created_by"`
-	StartedAt   string             `json:"started_at"`
-	FinishedAt  string             `json:"finished_at"`
-	Reactions   *reactionsResponse `json:"reactions,omitempty"`
+	ID          string                  `json:"id"`
+	Title       string                  `json:"title"`
+	Category    string                  `json:"category"`
+	Price       uint64                  `json:"price"`
+	Description string                  `json:"description"`
+	Location    locationResponse        `json:"location"`
+	CreatedAt   string                  `json:"created_at"`
+	CreatedBy   string                  `json:"created_by"`
+	StartedAt   string                  `json:"started_at"`
+	FinishedAt  string                  `json:"finished_at"`
+	Reactions   *reactionsResponse      `json:"reactions,omitempty"`
+	Reviews     *reviewsSummaryResponse `json:"reviews,omitempty"`
 }
 
 type listEventsResponse struct {
@@ -84,8 +94,36 @@ type listEventsResponse struct {
 	Count  int             `json:"count"`
 }
 
+type createReviewRequest struct {
+	Comment string `json:"comment"`
+	Rating  *int8  `json:"rating"`
+}
+
+type createReviewResponse struct {
+	ID string `json:"id"`
+}
+
+type reviewResponse struct {
+	ID        string `json:"id"`
+	EventID   string `json:"event_id"`
+	Comment   string `json:"comment"`
+	CreatedAt string `json:"created_at"`
+	CreatedBy string `json:"created_by"`
+	Rating    int8   `json:"rating"`
+	UpdatedAt string `json:"updated_at"`
+}
+
+type listReviewsResponse struct {
+	Reviews []reviewResponse `json:"reviews"`
+	Count   int              `json:"count"`
+}
+
 func (h *Handler) HasReactions() bool {
 	return h.reactions != nil
+}
+
+func (h *Handler) HasReviews() bool {
+	return h.reviews != nil
 }
 
 func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
@@ -143,6 +181,7 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	sid := sessionHTTP.ReadSID(r)
 	includeReactions := includesReactions(r)
+	includeReviews := includesReviews(r)
 
 	limit, err := parseUintQuery(r, "limit")
 	if err != nil {
@@ -254,10 +293,15 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
+	reviewsByTitle, err := h.resolveReviewsByTitle(r, events, includeReviews)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
 
 	response := listEventsResponse{Events: make([]eventResponse, 0, len(events)), Count: len(events)}
 	for _, event := range events {
-		response.Events = append(response.Events, toEventResponse(event, includeReactions, reactionsByTitle[event.Title]))
+		response.Events = append(response.Events, toEventResponse(event, includeReactions, reactionsByTitle[event.Title], includeReviews, reviewsByTitle[event.Title]))
 	}
 
 	h.refreshExistingSession(r, w, sid)
@@ -267,6 +311,7 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) GetByID(w http.ResponseWriter, r *http.Request) {
 	sid := sessionHTTP.ReadSID(r)
 	includeReactions := includesReactions(r)
+	includeReviews := includesReviews(r)
 
 	event, found, err := h.events.GetByID(r.Context(), chi.URLParam(r, "id"))
 	if err != nil {
@@ -287,9 +332,17 @@ func (h *Handler) GetByID(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	reviewCounts := reviewsService.Counts{}
+	if includeReviews && h.reviews != nil {
+		reviewCounts, err = h.reviews.GetByTitle(r.Context(), event.Title)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+	}
 
 	h.refreshExistingSession(r, w, sid)
-	transport.JSON(w, r, http.StatusOK, toEventResponse(event, includeReactions, counts))
+	transport.JSON(w, r, http.StatusOK, toEventResponse(event, includeReactions, counts, includeReviews, reviewCounts))
 }
 
 func (h *Handler) Patch(w http.ResponseWriter, r *http.Request) {
@@ -341,6 +394,146 @@ func (h *Handler) Like(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) Dislike(w http.ResponseWriter, r *http.Request) {
 	h.react(w, r, false)
+}
+
+func (h *Handler) CreateReview(w http.ResponseWriter, r *http.Request) {
+	sid := sessionHTTP.ReadSID(r)
+
+	session, found, err := h.sessions.Get(r.Context(), sid)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	if !found || session.UserID == "" {
+		h.refreshExistingSession(r, w, sid)
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+	if h.reviews == nil {
+		h.refreshExistingSession(r, w, sid)
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+
+	var req createReviewRequest
+	if err := decodeJSONStrict(r, &req); err != nil || req.Rating == nil {
+		h.refreshExistingSession(r, w, sid)
+		transport.Message(w, r, http.StatusBadRequest, `invalid "body" field`)
+		return
+	}
+
+	id, err := h.reviews.Create(r.Context(), chi.URLParam(r, "id"), session.UserID, req.Comment, *req.Rating)
+	if err != nil {
+		h.refreshExistingSession(r, w, sid)
+		switch {
+		case errors.Is(err, reviewsService.ErrInvalidComment):
+			transport.Message(w, r, http.StatusBadRequest, err.Error())
+			return
+		case errors.Is(err, reviewsService.ErrInvalidRating):
+			transport.Message(w, r, http.StatusBadRequest, err.Error())
+			return
+		case errors.Is(err, reviewsService.ErrAlreadyExists):
+			transport.Message(w, r, http.StatusConflict, err.Error())
+			return
+		case errors.Is(err, reviewsService.ErrEventNotFound):
+			transport.Message(w, r, http.StatusNotFound, err.Error())
+			return
+		default:
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+	}
+
+	h.refreshExistingSession(r, w, sid)
+	transport.JSON(w, r, http.StatusCreated, createReviewResponse{ID: id})
+}
+
+func (h *Handler) ListReviews(w http.ResponseWriter, r *http.Request) {
+	sid := sessionHTTP.ReadSID(r)
+
+	limit, err := parseUintQuery(r, "limit")
+	if err != nil {
+		h.refreshExistingSession(r, w, sid)
+		transport.Message(w, r, http.StatusBadRequest, `invalid "limit" field`)
+		return
+	}
+	offset, err := parseUintQuery(r, "offset")
+	if err != nil {
+		h.refreshExistingSession(r, w, sid)
+		transport.Message(w, r, http.StatusBadRequest, `invalid "offset" field`)
+		return
+	}
+	if h.reviews == nil {
+		h.refreshExistingSession(r, w, sid)
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+
+	reviews, err := h.reviews.ListByEventID(r.Context(), chi.URLParam(r, "id"), limit, offset)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	response := listReviewsResponse{Reviews: make([]reviewResponse, 0, len(reviews)), Count: len(reviews)}
+	for _, review := range reviews {
+		response.Reviews = append(response.Reviews, toReviewResponse(review))
+	}
+
+	h.refreshExistingSession(r, w, sid)
+	transport.JSON(w, r, http.StatusOK, response)
+}
+
+func (h *Handler) UpdateReview(w http.ResponseWriter, r *http.Request) {
+	sid := sessionHTTP.ReadSID(r)
+
+	session, found, err := h.sessions.Get(r.Context(), sid)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	if !found || session.UserID == "" {
+		h.refreshExistingSession(r, w, sid)
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+	if h.reviews == nil {
+		h.refreshExistingSession(r, w, sid)
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+
+	patch, err := decodeReviewPatchRequest(r)
+	if err != nil {
+		h.refreshExistingSession(r, w, sid)
+		transport.Message(w, r, http.StatusBadRequest, `invalid "body" field`)
+		return
+	}
+
+	err = h.reviews.Update(r.Context(), chi.URLParam(r, "id"), chi.URLParam(r, "review_id"), session.UserID, patch)
+	if err != nil {
+		h.refreshExistingSession(r, w, sid)
+		switch {
+		case errors.Is(err, reviewsService.ErrInvalidComment):
+			transport.Message(w, r, http.StatusBadRequest, err.Error())
+			return
+		case errors.Is(err, reviewsService.ErrInvalidRating):
+			transport.Message(w, r, http.StatusBadRequest, err.Error())
+			return
+		case errors.Is(err, reviewsService.ErrEventNotFound):
+			transport.Message(w, r, http.StatusNotFound, err.Error())
+			return
+		case errors.Is(err, reviewsService.ErrReviewNotFound):
+			transport.Message(w, r, http.StatusNotFound, err.Error())
+			return
+		default:
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+	}
+
+	h.refreshExistingSession(r, w, sid)
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (h *Handler) react(w http.ResponseWriter, r *http.Request, like bool) {
@@ -399,6 +592,23 @@ func (h *Handler) resolveReactionsByTitle(r *http.Request, events []eventsServic
 	return h.reactions.GetByTitles(r.Context(), titles)
 }
 
+func (h *Handler) resolveReviewsByTitle(r *http.Request, events []eventsService.Event, includeReviews bool) (map[string]reviewsService.Counts, error) {
+	result := make(map[string]reviewsService.Counts, len(events))
+	if !includeReviews {
+		return result, nil
+	}
+	if h.reviews == nil {
+		return result, nil
+	}
+
+	titles := make([]string, 0, len(events))
+	for _, event := range events {
+		titles = append(titles, event.Title)
+	}
+
+	return h.reviews.GetByTitles(r.Context(), titles)
+}
+
 func (h *Handler) refreshExistingSession(r *http.Request, w http.ResponseWriter, sid string) {
 	_, found, err := h.sessions.RefreshIfExists(r.Context(), sid)
 	if err == nil && found {
@@ -406,7 +616,7 @@ func (h *Handler) refreshExistingSession(r *http.Request, w http.ResponseWriter,
 	}
 }
 
-func toEventResponse(event eventsService.Event, includeReactions bool, counts reactionsService.Counts) eventResponse {
+func toEventResponse(event eventsService.Event, includeReactions bool, counts reactionsService.Counts, includeReviews bool, reviewCounts reviewsService.Counts) eventResponse {
 	response := eventResponse{
 		ID:          event.ID.Hex(),
 		Title:       event.Title,
@@ -425,12 +635,36 @@ func toEventResponse(event eventsService.Event, includeReactions bool, counts re
 	if includeReactions {
 		response.Reactions = &reactionsResponse{Likes: counts.Likes, Dislikes: counts.Dislikes}
 	}
+	if includeReviews {
+		response.Reviews = &reviewsSummaryResponse{Count: reviewCounts.Count, Rating: reviewCounts.Rating}
+	}
 	return response
+}
+
+func toReviewResponse(review reviewsService.Review) reviewResponse {
+	return reviewResponse{
+		ID:        review.ID,
+		EventID:   review.EventID,
+		Comment:   review.Comment,
+		CreatedAt: review.CreatedAt.UTC().Format(time.RFC3339),
+		CreatedBy: review.CreatedBy,
+		Rating:    review.Rating,
+		UpdatedAt: review.UpdatedAt.UTC().Format(time.RFC3339),
+	}
 }
 
 func includesReactions(r *http.Request) bool {
 	for _, part := range strings.Split(r.URL.Query().Get("include"), ",") {
 		if strings.TrimSpace(part) == "reactions" {
+			return true
+		}
+	}
+	return false
+}
+
+func includesReviews(r *http.Request) bool {
+	for _, part := range strings.Split(r.URL.Query().Get("include"), ",") {
+		if strings.TrimSpace(part) == "reviews" {
 			return true
 		}
 	}
@@ -484,6 +718,38 @@ func decodePatchRequest(r *http.Request) (eventsService.EventPatch, error) {
 		}
 	}
 
+	return patch, nil
+}
+
+func decodeReviewPatchRequest(r *http.Request) (reviewsService.Patch, error) {
+	raw := map[string]json.RawMessage{}
+	decoder := json.NewDecoder(r.Body)
+	if err := decoder.Decode(&raw); err != nil {
+		return reviewsService.Patch{}, err
+	}
+
+	var patch reviewsService.Patch
+	if value, ok := raw["comment"]; ok {
+		var comment string
+		if err := json.Unmarshal(value, &comment); err != nil {
+			return reviewsService.Patch{}, reviewsService.ErrInvalidComment
+		}
+		patch.Comment = &comment
+	}
+	if value, ok := raw["rating"]; ok {
+		var rating int8
+		if err := json.Unmarshal(value, &rating); err != nil {
+			return reviewsService.Patch{}, reviewsService.ErrInvalidRating
+		}
+		patch.Rating = &rating
+	}
+	for key := range raw {
+		switch key {
+		case "comment", "rating":
+		default:
+			return reviewsService.Patch{}, errors.New("unknown field")
+		}
+	}
 	return patch, nil
 }
 
