@@ -36,14 +36,23 @@ type CassandraConfig struct {
 	Consistency string
 }
 
+type Neo4jConfig struct {
+	Enabled  bool
+	URL      string
+	User     string
+	Password string
+}
+
 type Config struct {
-	Port            int
-	UserSessionTTL  time.Duration
-	LikeTTL         time.Duration
-	EventReviewsTTL time.Duration
-	Redis           RedisConfig
-	Mongo           MongoConfig
-	Cassandra       CassandraConfig
+	Port               int
+	UserSessionTTL     time.Duration
+	LikeTTL            time.Duration
+	EventReviewsTTL    time.Duration
+	RecommendationsTTL time.Duration
+	Redis              RedisConfig
+	Mongo              MongoConfig
+	Cassandra          CassandraConfig
+	Neo4j              Neo4jConfig
 }
 
 func Load() (Config, error) {
@@ -69,6 +78,11 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 
+	recommendationsTTLSeconds, err := getPositiveIntEnvOrDefault("APP_RECOMMENDATIONS_TTL", 60)
+	if err != nil {
+		return Config{}, err
+	}
+
 	redisHost, err := getRequiredEnv("REDIS_HOST")
 	if err != nil {
 		return Config{}, err
@@ -90,10 +104,11 @@ func Load() (Config, error) {
 	}
 
 	cfg := Config{
-		Port:            port,
-		UserSessionTTL:  time.Duration(ttlSeconds) * time.Second,
-		LikeTTL:         time.Duration(likeTTLSeconds) * time.Second,
-		EventReviewsTTL: time.Duration(eventReviewsTTLSeconds) * time.Second,
+		Port:               port,
+		UserSessionTTL:     time.Duration(ttlSeconds) * time.Second,
+		LikeTTL:            time.Duration(likeTTLSeconds) * time.Second,
+		EventReviewsTTL:    time.Duration(eventReviewsTTLSeconds) * time.Second,
+		RecommendationsTTL: time.Duration(recommendationsTTLSeconds) * time.Second,
 		Redis: RedisConfig{
 			Host:     redisHost,
 			Port:     redisPort,
@@ -184,6 +199,26 @@ func Load() (Config, error) {
 			Password:    cassandraPassword,
 			Keyspace:    cassandraKeyspace,
 			Consistency: strings.ToUpper(cassandraConsistency),
+		}
+	}
+
+	neo4jURL := strings.TrimSpace(os.Getenv("NEO4J_URL"))
+	neo4jUser := firstNonEmpty(os.Getenv("NEO4J_USERNAME"), os.Getenv("NEO4J_USER"))
+	neo4jUser = strings.TrimSpace(neo4jUser)
+	neo4jPassword := os.Getenv("NEO4J_PASSWORD")
+	neo4jAnySet := neo4jURL != "" || neo4jUser != "" || neo4jPassword != ""
+	if neo4jAnySet {
+		if neo4jURL == "" {
+			return Config{}, fmt.Errorf("NEO4J_URL is required")
+		}
+		if (neo4jUser == "") != (neo4jPassword == "") {
+			return Config{}, fmt.Errorf("NEO4J_USERNAME and NEO4J_PASSWORD must be set together")
+		}
+		cfg.Neo4j = Neo4jConfig{
+			Enabled:  true,
+			URL:      neo4jURL,
+			User:     neo4jUser,
+			Password: neo4jPassword,
 		}
 	}
 

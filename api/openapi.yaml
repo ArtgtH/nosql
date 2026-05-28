@@ -1,0 +1,484 @@
+openapi: 3.0.3
+info:
+  title: EventHub API
+  version: "1.0"
+servers:
+  - url: http://localhost:8080
+security:
+  - sessionCookie: []
+paths:
+  /health:
+    get:
+      security: []
+      responses:
+        "200":
+          description: Service health
+  /users:
+    post:
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateUserRequest"
+      responses:
+        "201":
+          description: Created
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "409":
+          $ref: "#/components/responses/Conflict"
+    get:
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+        - name: id
+          in: query
+          schema:
+            type: string
+        - name: name
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Users
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListUsersResponse"
+  /users/{id}:
+    get:
+      parameters:
+        - $ref: "#/components/parameters/ID"
+      responses:
+        "200":
+          description: User
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /users/{id}/events:
+    get:
+      parameters:
+        - $ref: "#/components/parameters/ID"
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+        - $ref: "#/components/parameters/Include"
+      responses:
+        "200":
+          description: User events
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListEventsResponse"
+  /auth/login:
+    post:
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "204":
+          description: Logged in
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /auth/logout:
+    post:
+      responses:
+        "204":
+          description: Logged out
+  /events:
+    post:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateEventRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IDResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    get:
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+        - $ref: "#/components/parameters/Include"
+        - name: title
+          in: query
+          schema:
+            type: string
+        - name: category
+          in: query
+          schema:
+            type: string
+        - name: city
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Events
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListEventsResponse"
+  /events/{id}:
+    get:
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/ID"
+        - $ref: "#/components/parameters/Include"
+      responses:
+        "200":
+          description: Event
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Event"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      parameters:
+        - $ref: "#/components/parameters/ID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PatchEventRequest"
+      responses:
+        "204":
+          description: Updated
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /events/{id}/like:
+    post:
+      parameters:
+        - $ref: "#/components/parameters/ID"
+      responses:
+        "204":
+          description: Liked
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /events/{id}/dislike:
+    post:
+      parameters:
+        - $ref: "#/components/parameters/ID"
+      responses:
+        "204":
+          description: Disliked
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /events/{id}/reviews:
+    post:
+      parameters:
+        - $ref: "#/components/parameters/ID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateReviewRequest"
+      responses:
+        "201":
+          description: Review created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IDResponse"
+        "409":
+          $ref: "#/components/responses/Conflict"
+    get:
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/ID"
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+      responses:
+        "200":
+          description: Reviews
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListReviewsResponse"
+  /events/{id}/reviews/{review_id}:
+    patch:
+      parameters:
+        - $ref: "#/components/parameters/ID"
+        - name: review_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PatchReviewRequest"
+      responses:
+        "204":
+          description: Updated
+  /recommendations:
+    get:
+      responses:
+        "200":
+          description: Recommended events for current user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecommendationsResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: X-Session-Id
+  parameters:
+    ID:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+    Limit:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        minimum: 0
+    Offset:
+      name: offset
+      in: query
+      schema:
+        type: integer
+        minimum: 0
+    Include:
+      name: include
+      in: query
+      schema:
+        type: string
+        example: reactions,reviews
+  responses:
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Message"
+    Unauthorized:
+      description: Unauthorized
+    NotFound:
+      description: Not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Message"
+    Conflict:
+      description: Conflict
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Message"
+  schemas:
+    Message:
+      type: object
+      properties:
+        message:
+          type: string
+    IDResponse:
+      type: object
+      properties:
+        id:
+          type: string
+    CreateUserRequest:
+      type: object
+      required: [full_name, username, password]
+      properties:
+        full_name:
+          type: string
+        username:
+          type: string
+        password:
+          type: string
+    LoginRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+        full_name:
+          type: string
+        username:
+          type: string
+    ListUsersResponse:
+      type: object
+      properties:
+        users:
+          type: array
+          items:
+            $ref: "#/components/schemas/User"
+        count:
+          type: integer
+    CreateEventRequest:
+      type: object
+      required: [title, address, started_at, finished_at, description]
+      properties:
+        title:
+          type: string
+        address:
+          type: string
+        started_at:
+          type: string
+          format: date-time
+        finished_at:
+          type: string
+          format: date-time
+        description:
+          type: string
+    PatchEventRequest:
+      type: object
+      properties:
+        category:
+          type: string
+        price:
+          type: integer
+          minimum: 0
+        city:
+          type: string
+    Event:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        category:
+          type: string
+        price:
+          type: integer
+        description:
+          type: string
+        location:
+          $ref: "#/components/schemas/Location"
+        created_at:
+          type: string
+        created_by:
+          type: string
+        started_at:
+          type: string
+        finished_at:
+          type: string
+        reactions:
+          $ref: "#/components/schemas/Reactions"
+        reviews:
+          $ref: "#/components/schemas/ReviewSummary"
+    Location:
+      type: object
+      properties:
+        address:
+          type: string
+        city:
+          type: string
+    Reactions:
+      type: object
+      properties:
+        likes:
+          type: integer
+        dislikes:
+          type: integer
+    ReviewSummary:
+      type: object
+      properties:
+        count:
+          type: integer
+        rating:
+          type: number
+    ListEventsResponse:
+      type: object
+      properties:
+        events:
+          type: array
+          items:
+            $ref: "#/components/schemas/Event"
+        count:
+          type: integer
+    CreateReviewRequest:
+      type: object
+      required: [comment, rating]
+      properties:
+        comment:
+          type: string
+          maxLength: 300
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+    PatchReviewRequest:
+      type: object
+      properties:
+        comment:
+          type: string
+          maxLength: 300
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+    Review:
+      type: object
+      properties:
+        id:
+          type: string
+        event_id:
+          type: string
+        comment:
+          type: string
+        created_at:
+          type: string
+        created_by:
+          type: string
+        rating:
+          type: integer
+        updated_at:
+          type: string
+    ListReviewsResponse:
+      type: object
+      properties:
+        reviews:
+          type: array
+          items:
+            $ref: "#/components/schemas/Review"
+        count:
+          type: integer
+    RecommendationsResponse:
+      type: object
+      properties:
+        events:
+          type: array
+          items:
+            $ref: "#/components/schemas/Event"

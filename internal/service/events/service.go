@@ -75,15 +75,25 @@ type Repository interface {
 	GetByID(ctx context.Context, id string) (Event, bool, error)
 	UpdateByOrganizer(ctx context.Context, eventID, organizerID string, patch EventPatch) (bool, error)
 	List(ctx context.Context, filter ListFilter) ([]Event, error)
+	ListByIDs(ctx context.Context, ids []string) ([]Event, error)
 	ListByTitles(ctx context.Context, titles []string) ([]Event, error)
 }
 
-type Service struct {
-	repo Repository
+type Graph interface {
+	CreateEvent(ctx context.Context, id, title string) error
 }
 
-func NewService(repo Repository) *Service {
-	return &Service{repo: repo}
+type Service struct {
+	repo  Repository
+	graph Graph
+}
+
+func NewService(repo Repository, graph ...Graph) *Service {
+	service := &Service{repo: repo}
+	if len(graph) > 0 {
+		service.graph = graph[0]
+	}
+	return service
 }
 
 func (s *Service) Create(
@@ -141,7 +151,16 @@ func (s *Service) Create(
 		FinishedAt: parsedFinishedAt.Format(time.RFC3339),
 	}
 
-	return s.repo.Create(ctx, event)
+	id, err := s.repo.Create(ctx, event)
+	if err != nil {
+		return "", err
+	}
+	if s.graph != nil {
+		if err := s.graph.CreateEvent(ctx, id, event.Title); err != nil {
+			return "", err
+		}
+	}
+	return id, nil
 }
 
 func (s *Service) Patch(ctx context.Context, eventID, organizerID string, patch EventPatch) error {
@@ -231,6 +250,36 @@ func (s *Service) ListByTitles(ctx context.Context, titles []string) ([]Event, e
 	}
 
 	events, err := s.repo.ListByTitles(ctx, cleaned)
+	if err != nil {
+		return nil, err
+	}
+
+	for i := range events {
+		events[i].Category = NormalizeCategory(events[i].Category)
+	}
+
+	return events, nil
+}
+
+func (s *Service) ListByIDs(ctx context.Context, ids []string) ([]Event, error) {
+	cleaned := make([]string, 0, len(ids))
+	seen := make(map[string]struct{}, len(ids))
+	for _, id := range ids {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		cleaned = append(cleaned, id)
+	}
+	if len(cleaned) == 0 {
+		return []Event{}, nil
+	}
+
+	events, err := s.repo.ListByIDs(ctx, cleaned)
 	if err != nil {
 		return nil, err
 	}

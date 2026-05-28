@@ -7,6 +7,7 @@ import (
 	authHTTP "nosql/internal/api/auth"
 	eventsHTTP "nosql/internal/api/events"
 	healthHTTP "nosql/internal/api/health"
+	recommendationsHTTP "nosql/internal/api/recommendations"
 	sessionHTTP "nosql/internal/api/session"
 	usersHTTP "nosql/internal/api/users"
 
@@ -20,6 +21,7 @@ func NewRouter(
 	userHandler *usersHTTP.Handler,
 	authHandler *authHTTP.Handler,
 	eventHandler *eventsHTTP.Handler,
+	recommendationHandler *recommendationsHTTP.Handler,
 ) http.Handler {
 	r := chi.NewRouter()
 
@@ -57,6 +59,10 @@ func NewRouter(
 			r.Get("/events/{id}/reviews", eventHandler.ListReviews)
 			r.Patch("/events/{id}/reviews/{review_id}", eventHandler.UpdateReview)
 		}
+	}
+
+	if recommendationHandler != nil {
+		r.Get("/recommendations", recommendationHandler.List)
 	}
 
 	return r
