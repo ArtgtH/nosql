@@ -1,48 +1,46 @@
-# EventHub - NoSQL Database Project
+# EventHub
 
-[![EventHub](https://github.com/{your_username}/{your_repo}/actions/workflows/eventhub.yml/badge.svg)](https://github.com/ArtgtH/nosql/actions/workflows/eventhub.yml)
+Backend API для мероприятий. Проект использует Redis для сессий и кэшей, MongoDB для пользователей и мероприятий, Cassandra для реакций и отзывов, Neo4j для графа рекомендаций.
 
-Backend-сервис платформы мероприятий для практического изучения NoSQL баз данных.
+## Запуск
 
-## С чего начать
+1. Проверьте `.env.local`.
+2. Запустите сервисы:
 
-1. **‼️ Настройте репозиторий** — проведите обязательную настройку контрибьюторов и защиты ветки (см. ниже)
-2. **[Лабораторные работы](https://github.com/sitnikovik/ndbx/tree/main/docs/lab)** — технические задания для каждой лабораторной работы
-3. **[CONTRIBUTING.md](CONTRIBUTING.md)** — требования к структуре проекта, процесс разработки и проверки
-4. **[Документация курса](https://github.com/sitnikovik/ndbx)** — методические материалы и дополнительные ресурсы
+```sh
+make run
+```
 
-> 💡 Не забудьте поменять `{your_username}` и `{your_repo}` в badge на ваши имя пользователя и название репозитория.
+API будет доступно на `http://localhost:8080`, если `APP_PORT=8080`.
 
-## Настройка репозитория
+Полезные команды:
 
-### Защита основной ветки
+```sh
+make logs     # логи всех контейнеров
+make stop     # остановить контейнеры
+make clean    # остановить и удалить volumes
+make test     # go test ./...
+```
 
-После создания репозитория из шаблона **обязательно настройте правила защиты для ветки `main`**:
+## API
 
-1. Откройте **Settings** → **Branches** → **Add classic branch protection rule**
-2. В поле **Branch name pattern** укажите: `main`
-3. Включите следующие опции:
-   - **Require a pull request before merging**
-     - Require approvals: **1**: требует минимум одного одобрения перед слиянием
-   - ***Require status checks to pass before merging***
-     - Выберите *"autograder"*: проверит все лабораторные работы автоматически
-     - ***Require branches to be up to date before merging*** (рекомендуется):
-     требует, чтобы ветка PR была синхронизирована с последними изменениями из основной ветки перед слиянием
-   - ***Lock branch***: запрещает прямые коммиты в основную ветку
-   - ***Do not allow bypassing the above settings***: запрещает обход настроек защиты ветки
-4. Нажмите **Create** или **Save changes**
+Swagger/OpenAPI лежит в [api/openapi.yaml](api/openapi.yaml).
 
-> ⚠️ **Важно:** Без этих настроек автоматические проверки не будут блокировать PR с ошибками.
+Основные ручки:
 
-### Добавление коллабораторов
+- `POST /users` - регистрация и выдача cookie `X-Session-Id`
+- `POST /auth/login`, `POST /auth/logout` - вход и выход
+- `GET /users`, `GET /users/{id}`, `GET /users/{id}/events` - пользователи
+- `POST /events`, `GET /events`, `GET /events/{id}`, `PATCH /events/{id}` - мероприятия
+- `POST /events/{id}/like`, `POST /events/{id}/dislike` - реакции
+- `POST /events/{id}/reviews`, `GET /events/{id}/reviews`, `PATCH /events/{id}/reviews/{review_id}` - отзывы
+- `GET /recommendations` - рекомендации для текущего авторизованного пользователя
 
-Чтобы преподаватели могли проводить код-ревью:
+`include=reactions,reviews` можно передавать в запросы списка/получения мероприятий.
 
-1. Откройте **Settings** → **Collaborators**
-2. Нажмите **Add people**
-3. Добавьте всех кто есть в списке ревьюеров в файле [CODEOWNERS](CODEOWNERS)
-4. Выберите роль: **Write** (или выше), иначе ревьюер не сможет одобрить PR
+## Хранилища
 
-## Помощь
-
-Возникли вопросы? → [@sitnikovik](https://t.me/sitnikovik)
+- MongoDB: документы пользователей и мероприятий.
+- Redis: сессии, кэш реакций, отзывов и рекомендаций.
+- Cassandra: таблицы `event_reactions` и `event_reviews`, создаются через `scripts/cassandra-init.sh`.
+- Neo4j: узлы `User`, `Event` и связь `LIKED`, constraints создаются через `scripts/neo4j-init.sh`.
