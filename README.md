@@ -217,3 +217,8 @@ make compose-config  # проверить итоговый docker-compose config
 | `NEO4J_HTTP_PORT` | HTTP-порт Neo4j browser | `7474` |
 | `NEO4J_BOLT_PORT` | Bolt-порт Neo4j | `7687` |
 
+## Проверка
+
+Проект проверяется автотестами в GitHub Actions. Workflow лежит в `.github/workflows/eventhub.yml`: он читает номер лабораторной из `.labrc`, затем запускает reusable workflow `sitnikovik/ndbx/.github/workflows/eventhub.yml@main`.
+
+Проверка запускается автоматически при `push` и `pull_request` в ветку `main`, а также вручную через `workflow_dispatch`. Сами автогрейдеры находятся в репозитории задания: <https://github.com/sitnikovik/ndbx/tree/main/autograder>.
