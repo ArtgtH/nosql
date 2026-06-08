@@ -1,20 +1,53 @@
 openapi: 3.0.3
 info:
   title: EventHub API
-  version: "1.0"
+  description: Backend API for event publishing, discovery, reactions, reviews and recommendations.
+  version: "1.0.0"
 servers:
   - url: http://localhost:8080
+    description: Local Docker Compose environment
 security:
   - sessionCookie: []
+tags:
+  - name: health
+  - name: session
+  - name: users
+  - name: auth
+  - name: events
+  - name: reactions
+  - name: reviews
+  - name: recommendations
 paths:
   /health:
     get:
+      tags: [health]
+      summary: Check service availability
       security: []
       responses:
         "200":
-          description: Service health
+          description: Service is healthy
+
+  /session:
+    post:
+      tags: [session]
+      summary: Create or refresh anonymous session
+      security: []
+      responses:
+        "201":
+          description: New session created
+          headers:
+            Set-Cookie:
+              $ref: "#/components/headers/SessionCookie"
+        "200":
+          description: Existing session refreshed
+          headers:
+            Set-Cookie:
+              $ref: "#/components/headers/SessionCookie"
+
   /users:
     post:
+      tags: [users]
+      summary: Register user and create authenticated session
       security: []
       requestBody:
         required: true
@@ -22,61 +55,116 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/CreateUserRequest"
+            examples:
+              default:
+                value:
+                  full_name: Ivan Petrov
+                  username: ivan
+                  password: strong-password
       responses:
         "201":
-          description: Created
+          description: User created; session cookie is set
+          headers:
+            Set-Cookie:
+              $ref: "#/components/headers/SessionCookie"
         "400":
           $ref: "#/components/responses/BadRequest"
         "409":
           $ref: "#/components/responses/Conflict"
     get:
+      tags: [users]
+      summary: List users
       parameters:
         - $ref: "#/components/parameters/Limit"
         - $ref: "#/components/parameters/Offset"
         - name: id
           in: query
+          description: Filter by MongoDB ObjectID
           schema:
             type: string
+            example: 66537d9f83f01c62dd6c6041
         - name: name
           in: query
+          description: Filter by full name
           schema:
             type: string
+            example: Ivan
       responses:
         "200":
-          description: Users
+          description: Users found
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ListUsersResponse"
+              examples:
+                default:
+                  value:
+                    users:
+                      - id: 66537d9f83f01c62dd6c6041
+                        full_name: Ivan Petrov
+                        username: ivan
+                    count: 1
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
   /users/{id}:
     get:
+      tags: [users]
+      summary: Get user by id
       parameters:
         - $ref: "#/components/parameters/ID"
       responses:
         "200":
-          description: User
+          description: User found
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/User"
+              examples:
+                default:
+                  value:
+                    id: 66537d9f83f01c62dd6c6041
+                    full_name: Ivan Petrov
+                    username: ivan
         "404":
           $ref: "#/components/responses/NotFound"
+
   /users/{id}/events:
     get:
+      tags: [users, events]
+      summary: List events created by user
       parameters:
         - $ref: "#/components/parameters/ID"
         - $ref: "#/components/parameters/Limit"
         - $ref: "#/components/parameters/Offset"
         - $ref: "#/components/parameters/Include"
+        - $ref: "#/components/parameters/EventIDFilter"
+        - $ref: "#/components/parameters/TitleFilter"
+        - $ref: "#/components/parameters/CategoryFilter"
+        - $ref: "#/components/parameters/CityFilter"
+        - $ref: "#/components/parameters/PriceFrom"
+        - $ref: "#/components/parameters/PriceTo"
+        - $ref: "#/components/parameters/DateFrom"
+        - $ref: "#/components/parameters/DateTo"
       responses:
         "200":
-          description: User events
+          description: Events created by user
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ListEventsResponse"
+              examples:
+                default:
+                  $ref: "#/components/examples/EventList"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /auth/login:
     post:
+      tags: [auth]
+      summary: Login user
       security: []
       requestBody:
         required: true
@@ -84,74 +172,121 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/LoginRequest"
+            examples:
+              default:
+                value:
+                  username: ivan
+                  password: strong-password
       responses:
         "204":
-          description: Logged in
+          description: Logged in; session cookie is set
+          headers:
+            Set-Cookie:
+              $ref: "#/components/headers/SessionCookie"
+        "400":
+          $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
+
   /auth/logout:
     post:
+      tags: [auth]
+      summary: Logout current user
       responses:
         "204":
-          description: Logged out
+          description: Logged out; session cookie is deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
   /events:
     post:
+      tags: [events]
+      summary: Create event
       requestBody:
         required: true
         content:
           application/json:
             schema:
               $ref: "#/components/schemas/CreateEventRequest"
+            examples:
+              default:
+                value:
+                  title: Backend Meetup
+                  address: Moscow, Tverskaya 1
+                  started_at: "2026-07-01T18:00:00Z"
+                  finished_at: "2026-07-01T21:00:00Z"
+                  description: Talks about Go and NoSQL databases
       responses:
         "201":
-          description: Created
+          description: Event created
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/IDResponse"
+              examples:
+                default:
+                  value:
+                    id: 66537e7c83f01c62dd6c6042
+        "400":
+          $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/Conflict"
     get:
+      tags: [events]
+      summary: List events
       security: []
       parameters:
         - $ref: "#/components/parameters/Limit"
         - $ref: "#/components/parameters/Offset"
         - $ref: "#/components/parameters/Include"
-        - name: title
-          in: query
-          schema:
-            type: string
-        - name: category
-          in: query
-          schema:
-            type: string
-        - name: city
-          in: query
-          schema:
-            type: string
+        - $ref: "#/components/parameters/EventIDFilter"
+        - $ref: "#/components/parameters/TitleFilter"
+        - $ref: "#/components/parameters/CategoryFilter"
+        - $ref: "#/components/parameters/CityFilter"
+        - $ref: "#/components/parameters/UserIDFilter"
+        - $ref: "#/components/parameters/UsernameFilter"
+        - $ref: "#/components/parameters/PriceFrom"
+        - $ref: "#/components/parameters/PriceTo"
+        - $ref: "#/components/parameters/DateFrom"
+        - $ref: "#/components/parameters/DateTo"
       responses:
         "200":
-          description: Events
+          description: Events found
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ListEventsResponse"
+              examples:
+                default:
+                  $ref: "#/components/examples/EventList"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
   /events/{id}:
     get:
+      tags: [events]
+      summary: Get event by id
       security: []
       parameters:
         - $ref: "#/components/parameters/ID"
         - $ref: "#/components/parameters/Include"
       responses:
         "200":
-          description: Event
+          description: Event found
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Event"
+              examples:
+                default:
+                  $ref: "#/components/examples/Event"
         "404":
           $ref: "#/components/responses/NotFound"
     patch:
+      tags: [events]
+      summary: Update event fields by organizer
       parameters:
         - $ref: "#/components/parameters/ID"
       requestBody:
@@ -160,33 +295,58 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/PatchEventRequest"
+            examples:
+              default:
+                value:
+                  category: meetup
+                  price: 1500
+                  city: Moscow
       responses:
         "204":
-          description: Updated
+          description: Event updated
+        "400":
+          $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
+
   /events/{id}/like:
     post:
+      tags: [reactions]
+      summary: Like event
       parameters:
         - $ref: "#/components/parameters/ID"
       responses:
         "204":
-          description: Liked
+          description: Event liked
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+
   /events/{id}/dislike:
     post:
+      tags: [reactions]
+      summary: Dislike event
       parameters:
         - $ref: "#/components/parameters/ID"
       responses:
         "204":
-          description: Disliked
+          description: Event disliked
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+
   /events/{id}/reviews:
     post:
+      tags: [reviews]
+      summary: Create review for event
       parameters:
         - $ref: "#/components/parameters/ID"
       requestBody:
@@ -195,6 +355,11 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/CreateReviewRequest"
+            examples:
+              default:
+                value:
+                  comment: Good speakers and useful topics
+                  rating: 5
       responses:
         "201":
           description: Review created
@@ -202,9 +367,23 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/IDResponse"
+              examples:
+                default:
+                  value:
+                    id: 6653801683f01c62dd6c6043
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
         "409":
           $ref: "#/components/responses/Conflict"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
     get:
+      tags: [reviews]
+      summary: List event reviews
       security: []
       parameters:
         - $ref: "#/components/parameters/ID"
@@ -212,71 +391,217 @@ paths:
         - $ref: "#/components/parameters/Offset"
       responses:
         "200":
-          description: Reviews
+          description: Reviews found
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ListReviewsResponse"
+              examples:
+                default:
+                  value:
+                    reviews:
+                      - id: 6653801683f01c62dd6c6043
+                        event_id: 66537e7c83f01c62dd6c6042
+                        comment: Good speakers and useful topics
+                        created_at: "2026-07-01T22:00:00Z"
+                        created_by: 66537d9f83f01c62dd6c6041
+                        rating: 5
+                        updated_at: "2026-07-01T22:00:00Z"
+                    count: 1
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+
   /events/{id}/reviews/{review_id}:
     patch:
+      tags: [reviews]
+      summary: Update own review
       parameters:
         - $ref: "#/components/parameters/ID"
         - name: review_id
           in: path
           required: true
+          description: Review identifier
           schema:
             type: string
+            example: 6653801683f01c62dd6c6043
       requestBody:
         required: true
         content:
           application/json:
             schema:
               $ref: "#/components/schemas/PatchReviewRequest"
+            examples:
+              default:
+                value:
+                  comment: Updated comment
+                  rating: 4
       responses:
         "204":
-          description: Updated
+          description: Review updated
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+
   /recommendations:
     get:
+      tags: [recommendations]
+      summary: List recommended events for current user
       responses:
         "200":
-          description: Recommended events for current user
+          description: Recommended events
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/RecommendationsResponse"
+              examples:
+                default:
+                  value:
+                    events:
+                      - id: 66537e7c83f01c62dd6c6042
+                        title: Backend Meetup
+                        category: meetup
+                        price: 1500
+                        description: Talks about Go and NoSQL databases
+                        location:
+                          address: Moscow, Tverskaya 1
+                          city: Moscow
+                        created_at: "2026-06-01T12:00:00Z"
+                        created_by: 66537d9f83f01c62dd6c6041
+                        started_at: "2026-07-01T18:00:00Z"
+                        finished_at: "2026-07-01T21:00:00Z"
         "401":
           $ref: "#/components/responses/Unauthorized"
+
 components:
   securitySchemes:
     sessionCookie:
       type: apiKey
       in: cookie
       name: X-Session-Id
+
+  headers:
+    SessionCookie:
+      description: Session cookie used by protected endpoints
+      schema:
+        type: string
+        example: X-Session-Id=1d5bbf8e3d2e4f91; Path=/; HttpOnly
+
   parameters:
     ID:
       name: id
       in: path
       required: true
+      description: Resource identifier
       schema:
         type: string
+        example: 66537e7c83f01c62dd6c6042
     Limit:
       name: limit
       in: query
+      description: Maximum number of records
       schema:
         type: integer
         minimum: 0
+        example: 20
     Offset:
       name: offset
       in: query
+      description: Number of records to skip
       schema:
         type: integer
         minimum: 0
+        example: 0
     Include:
       name: include
       in: query
+      description: Comma-separated optional expansions
       schema:
         type: string
+        enum: [reactions, reviews, reactions,reviews]
         example: reactions,reviews
+    EventIDFilter:
+      name: id
+      in: query
+      description: Filter events by MongoDB ObjectID
+      schema:
+        type: string
+        example: 66537e7c83f01c62dd6c6042
+    TitleFilter:
+      name: title
+      in: query
+      description: Filter events by title
+      schema:
+        type: string
+        example: Backend
+    CategoryFilter:
+      name: category
+      in: query
+      description: Event category
+      schema:
+        type: string
+        enum: [meetup, concert, exhibition, party, other]
+        example: meetup
+    CityFilter:
+      name: city
+      in: query
+      description: Event city
+      schema:
+        type: string
+        example: Moscow
+    UserIDFilter:
+      name: user_id
+      in: query
+      description: Filter events by creator id
+      schema:
+        type: string
+        example: 66537d9f83f01c62dd6c6041
+    UsernameFilter:
+      name: user
+      in: query
+      description: Filter events by creator username
+      schema:
+        type: string
+        example: ivan
+    PriceFrom:
+      name: price_from
+      in: query
+      description: Minimum event price
+      schema:
+        type: integer
+        minimum: 0
+        example: 0
+    PriceTo:
+      name: price_to
+      in: query
+      description: Maximum event price
+      schema:
+        type: integer
+        minimum: 0
+        example: 2000
+    DateFrom:
+      name: date_from
+      in: query
+      description: Start date lower bound. Handler also accepts started_date_from.
+      schema:
+        type: string
+        format: date
+        example: "2026-07-01"
+    DateTo:
+      name: date_to
+      in: query
+      description: Start date upper bound. Handler also accepts started_date_to.
+      schema:
+        type: string
+        format: date
+        example: "2026-07-31"
+
   responses:
     BadRequest:
       description: Invalid request
@@ -284,41 +609,108 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/Message"
+          examples:
+            default:
+              value:
+                message: invalid "body" field
     Unauthorized:
       description: Unauthorized
     NotFound:
-      description: Not found
+      description: Resource not found
       content:
         application/json:
           schema:
             $ref: "#/components/schemas/Message"
+          examples:
+            default:
+              value:
+                message: Not found
     Conflict:
-      description: Conflict
+      description: Resource conflict
       content:
         application/json:
           schema:
             $ref: "#/components/schemas/Message"
+          examples:
+            default:
+              value:
+                message: event already exists
+    ServiceUnavailable:
+      description: Optional storage-backed feature is unavailable
+
+  examples:
+    Event:
+      value:
+        id: 66537e7c83f01c62dd6c6042
+        title: Backend Meetup
+        category: meetup
+        price: 1500
+        description: Talks about Go and NoSQL databases
+        location:
+          address: Moscow, Tverskaya 1
+          city: Moscow
+        created_at: "2026-06-01T12:00:00Z"
+        created_by: 66537d9f83f01c62dd6c6041
+        started_at: "2026-07-01T18:00:00Z"
+        finished_at: "2026-07-01T21:00:00Z"
+        reactions:
+          likes: 12
+          dislikes: 1
+        reviews:
+          count: 3
+          rating: 4.7
+    EventList:
+      value:
+        events:
+          - id: 66537e7c83f01c62dd6c6042
+            title: Backend Meetup
+            category: meetup
+            price: 1500
+            description: Talks about Go and NoSQL databases
+            location:
+              address: Moscow, Tverskaya 1
+              city: Moscow
+            created_at: "2026-06-01T12:00:00Z"
+            created_by: 66537d9f83f01c62dd6c6041
+            started_at: "2026-07-01T18:00:00Z"
+            finished_at: "2026-07-01T21:00:00Z"
+            reactions:
+              likes: 12
+              dislikes: 1
+            reviews:
+              count: 3
+              rating: 4.7
+        count: 1
+
   schemas:
     Message:
       type: object
       properties:
         message:
           type: string
+      required: [message]
+
     IDResponse:
       type: object
       properties:
         id:
           type: string
+      required: [id]
+
     CreateUserRequest:
       type: object
       required: [full_name, username, password]
       properties:
         full_name:
           type: string
+          minLength: 1
         username:
           type: string
+          minLength: 1
         password:
           type: string
+          minLength: 1
+
     LoginRequest:
       type: object
       required: [username, password]
@@ -327,6 +719,7 @@ components:
           type: string
         password:
           type: string
+
     User:
       type: object
       properties:
@@ -336,6 +729,8 @@ components:
           type: string
         username:
           type: string
+      required: [id, full_name, username]
+
     ListUsersResponse:
       type: object
       properties:
@@ -345,14 +740,18 @@ components:
             $ref: "#/components/schemas/User"
         count:
           type: integer
+      required: [users, count]
+
     CreateEventRequest:
       type: object
       required: [title, address, started_at, finished_at, description]
       properties:
         title:
           type: string
+          minLength: 1
         address:
           type: string
+          minLength: 1
         started_at:
           type: string
           format: date-time
@@ -361,16 +760,19 @@ components:
           format: date-time
         description:
           type: string
+
     PatchEventRequest:
       type: object
       properties:
         category:
           type: string
+          enum: [meetup, concert, exhibition, party, other]
         price:
           type: integer
           minimum: 0
         city:
           type: string
+
     Event:
       type: object
       properties:
@@ -380,24 +782,41 @@ components:
           type: string
         category:
           type: string
+          enum: [meetup, concert, exhibition, party, other]
         price:
           type: integer
+          minimum: 0
         description:
           type: string
         location:
           $ref: "#/components/schemas/Location"
         created_at:
           type: string
+          format: date-time
         created_by:
           type: string
         started_at:
           type: string
+          format: date-time
         finished_at:
           type: string
+          format: date-time
         reactions:
           $ref: "#/components/schemas/Reactions"
         reviews:
           $ref: "#/components/schemas/ReviewSummary"
+      required:
+        - id
+        - title
+        - category
+        - price
+        - description
+        - location
+        - created_at
+        - created_by
+        - started_at
+        - finished_at
+
     Location:
       type: object
       properties:
@@ -405,6 +824,8 @@ components:
           type: string
         city:
           type: string
+      required: [address]
+
     Reactions:
       type: object
       properties:
@@ -412,6 +833,8 @@ components:
           type: integer
         dislikes:
           type: integer
+      required: [likes, dislikes]
+
     ReviewSummary:
       type: object
       properties:
@@ -419,6 +842,9 @@ components:
           type: integer
         rating:
           type: number
+          format: double
+      required: [count, rating]
+
     ListEventsResponse:
       type: object
       properties:
@@ -428,6 +854,8 @@ components:
             $ref: "#/components/schemas/Event"
         count:
           type: integer
+      required: [events, count]
+
     CreateReviewRequest:
       type: object
       required: [comment, rating]
@@ -439,6 +867,7 @@ components:
           type: integer
           minimum: 1
           maximum: 5
+
     PatchReviewRequest:
       type: object
       properties:
@@ -449,6 +878,7 @@ components:
           type: integer
           minimum: 1
           maximum: 5
+
     Review:
       type: object
       properties:
@@ -460,12 +890,18 @@ components:
           type: string
         created_at:
           type: string
+          format: date-time
         created_by:
           type: string
         rating:
           type: integer
+          minimum: 1
+          maximum: 5
         updated_at:
           type: string
+          format: date-time
+      required: [id, event_id, comment, created_at, created_by, rating, updated_at]
+
     ListReviewsResponse:
       type: object
       properties:
@@ -475,6 +911,8 @@ components:
             $ref: "#/components/schemas/Review"
         count:
           type: integer
+      required: [reviews, count]
+
     RecommendationsResponse:
       type: object
       properties:
@@ -482,3 +920,4 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Event"
+      required: [events]
